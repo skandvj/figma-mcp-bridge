@@ -1,0 +1,8 @@
+node_modules
+dist
+coverage
+.env
+figma-cache.sqlite
+generated
+.git
+.DS_Store

@@ -1,0 +1,45 @@
+{
+  "name": "figma-mcp-bridge",
+  "version": "0.1.0",
+  "description": "MCP server connecting AI coding agents to Figma design systems with tokens, component specs, code generation, and validation.",
+  "type": "module",
+  "main": "dist/mcp-server/index.js",
+  "types": "dist/mcp-server/index.d.ts",
+  "directories": {
+    "doc": "docs",
+    "example": "examples",
+    "test": "tests"
+  },
+  "scripts": {
+    "dev": "tsx src/mcp-server/index.ts",
+    "build": "tsc --noEmit && tsup src/mcp-server/index.ts src/token-pipeline/pipeline.ts --format esm --dts --out-dir dist",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --coverage",
+    "test:unit": "vitest run tests/unit",
+    "test:integration": "vitest run tests/integration"
+  },
+  "keywords": ["mcp", "figma", "design-system", "tokens", "ai-agents"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@figma/rest-api-spec": "^0.39.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "better-sqlite3": "^12.10.0",
+    "chokidar": "^5.0.0",
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "style-dictionary": "^5.4.1",
+    "tsx": "^4.22.3",
+    "typescript": "^6.0.3",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.9.1",
+    "@vitest/coverage-v8": "^4.1.7",
+    "tsup": "^8.5.1",
+    "vitest": "^4.1.7"
+  }
+}

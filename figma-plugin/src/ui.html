@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <style>
+      body {
+        margin: 0;
+        padding: 20px;
+        font: 13px/1.4 Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        color: #111827;
+      }
+
+      label {
+        display: block;
+        margin-bottom: 6px;
+        font-weight: 600;
+      }
+
+      input {
+        box-sizing: border-box;
+        width: 100%;
+        margin-bottom: 14px;
+        padding: 9px 10px;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+      }
+
+      button {
+        width: 100%;
+        padding: 10px 12px;
+        border: 0;
+        border-radius: 6px;
+        background: #2563eb;
+        color: white;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      .status {
+        margin-top: 16px;
+        padding: 12px;
+        border: 1px solid #e5e7eb;
+        border-radius: 6px;
+        background: #f9fafb;
+      }
+    </style>
+  </head>
+  <body>
+    <label for="endpoint">MCP webhook endpoint</label>
+    <input id="endpoint" placeholder="http://localhost:3100/webhook/figma" />
+    <button id="export">Export Design System</button>
+    <div class="status">
+      <div>Last sync: <span id="last-sync">Never</span></div>
+      <div>Components: <span id="components">0</span></div>
+      <div>Tokens: <span id="tokens">0</span></div>
+    </div>
+    <script>
+      const endpoint = document.getElementById("endpoint");
+      const button = document.getElementById("export");
+      const lastSync = document.getElementById("last-sync");
+      const components = document.getElementById("components");
+      const tokens = document.getElementById("tokens");
+
+      button.onclick = () => {
+        parent.postMessage(
+          {
+            pluginMessage: {
+              type: "export-design-system",
+              endpoint: endpoint.value || undefined
+            }
+          },
+          "*"
+        );
+      };
+
+      onmessage = (event) => {
+        const message = event.data.pluginMessage;
+        if (!message || message.type !== "export-complete") return;
+        lastSync.textContent = new Date().toLocaleString();
+        components.textContent = String(message.componentCount);
+        tokens.textContent = String(message.tokenCount);
+      };
+    </script>
+  </body>
+</html>
