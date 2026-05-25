@@ -20,6 +20,31 @@ export function registerResources(server: McpServer, client: FigmaClient): void 
   );
 
   server.registerResource(
+    "product-design-tokens",
+    new ResourceTemplate("figma://products/{product}/design-tokens", {
+      list: async () => ({
+        resources: client.listProductNames().map((product) => ({
+          uri: `figma://products/${encodeURIComponent(product)}/design-tokens`,
+          name: `${product} design tokens`,
+          mimeType: "application/json"
+        }))
+      }),
+      complete: {
+        product: async (value) => filterCompletions(client.listProductNames(), value)
+      }
+    }),
+    {
+      title: "Product Design Tokens",
+      description: "Product-scoped Figma variables transformed into Style Dictionary token JSON.",
+      mimeType: "application/json"
+    },
+    async (uri, variables) => {
+      const product = getVariable(variables, "product");
+      return jsonResource(uri.href, variablesToStyleDictionary(await client.getVariables(product)));
+    }
+  );
+
+  server.registerResource(
     "component-spec",
     new ResourceTemplate("figma://components/{component-name}", {
       list: async () => ({
@@ -45,6 +70,39 @@ export function registerResources(server: McpServer, client: FigmaClient): void 
   );
 
   server.registerResource(
+    "product-component-spec",
+    new ResourceTemplate("figma://products/{product}/components/{component-name}", {
+      list: async () => ({
+        resources: (
+          await Promise.all(
+            client.listProductNames().map(async (product) =>
+              (await client.listComponentNames(product)).map((name) => ({
+                uri: `figma://products/${encodeURIComponent(product)}/components/${encodeURIComponent(name)}`,
+                name: `${product} / ${name}`,
+                mimeType: "application/json"
+              }))
+            )
+          )
+        ).flat()
+      }),
+      complete: {
+        product: async (value) => filterCompletions(client.listProductNames(), value),
+        "component-name": async (value) => filterCompletions(await client.listComponentNames(), value)
+      }
+    }),
+    {
+      title: "Product Component Spec",
+      description: "Product-scoped component variants, props, sizing, spacing, states, and TypeScript props.",
+      mimeType: "application/json"
+    },
+    async (uri, variables) => {
+      const product = getVariable(variables, "product");
+      const name = getVariable(variables, "component-name");
+      return jsonResource(uri.href, componentSetToSpec(await client.getComponentSet(name, product)));
+    }
+  );
+
+  server.registerResource(
     "page-layout",
     new ResourceTemplate("figma://pages/{page-name}/layout", {
       list: async () => ({
@@ -66,6 +124,39 @@ export function registerResources(server: McpServer, client: FigmaClient): void 
     async (uri, variables) => {
       const pageName = getVariable(variables, "page-name");
       return jsonResource(uri.href, pageToLayoutSpec(await client.getPageLayout(pageName)));
+    }
+  );
+
+  server.registerResource(
+    "product-page-layout",
+    new ResourceTemplate("figma://products/{product}/pages/{page-name}/layout", {
+      list: async () => ({
+        resources: (
+          await Promise.all(
+            client.listProductNames().map(async (product) =>
+              (await client.listPageNames(product)).map((name) => ({
+                uri: `figma://products/${encodeURIComponent(product)}/pages/${encodeURIComponent(name)}/layout`,
+                name: `${product} / ${name} layout`,
+                mimeType: "application/json"
+              }))
+            )
+          )
+        ).flat()
+      }),
+      complete: {
+        product: async (value) => filterCompletions(client.listProductNames(), value),
+        "page-name": async (value) => filterCompletions(await client.listPageNames(), value)
+      }
+    }),
+    {
+      title: "Product Page Layout",
+      description: "Product-scoped auto-layout structure translated into CSS flex/grid guidance.",
+      mimeType: "application/json"
+    },
+    async (uri, variables) => {
+      const product = getVariable(variables, "product");
+      const pageName = getVariable(variables, "page-name");
+      return jsonResource(uri.href, pageToLayoutSpec(await client.getPageLayout(pageName, product)));
     }
   );
 
@@ -97,6 +188,46 @@ export function registerResources(server: McpServer, client: FigmaClient): void 
         }
       ]
     })
+  );
+
+  server.registerResource(
+    "product-asset-svg",
+    new ResourceTemplate("figma://products/{product}/assets/{asset-name}", {
+      list: async () => ({
+        resources: (
+          await Promise.all(
+            client.listProductNames().map(async (product) =>
+              (await client.listComponentNames(product)).map((name) => ({
+                uri: `figma://products/${encodeURIComponent(product)}/assets/${encodeURIComponent(name)}`,
+                name: `${product} / ${name} SVG`,
+                mimeType: "image/svg+xml"
+              }))
+            )
+          )
+        ).flat()
+      }),
+      complete: {
+        product: async (value) => filterCompletions(client.listProductNames(), value),
+        "asset-name": async (value) => filterCompletions(await client.listComponentNames(), value)
+      }
+    }),
+    {
+      title: "Product Asset SVG",
+      description: "Product-scoped optimized inline SVG export for a named Figma component or icon.",
+      mimeType: "image/svg+xml"
+    },
+    async (uri, variables) => {
+      const product = getVariable(variables, "product");
+      return {
+        contents: [
+          {
+            uri: uri.href,
+            mimeType: "image/svg+xml",
+            text: await client.exportNode(getVariable(variables, "asset-name"), "svg", product)
+          }
+        ]
+      };
+    }
   );
 }
 

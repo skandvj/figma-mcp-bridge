@@ -15,12 +15,13 @@ export function registerTools(server: McpServer, client: FigmaClient): void {
       description: "Generate framework component scaffold code from a Figma component spec.",
       inputSchema: {
         component_name: z.string().min(1),
-        framework: z.enum(FRAMEWORKS).default("react")
+        framework: z.enum(FRAMEWORKS).default("react"),
+        product: z.string().optional()
       }
     },
-    async ({ component_name, framework }) => {
-      const spec = componentSetToSpec(await client.getComponentSet(component_name));
-      const tokens = variablesToStyleDictionary(await client.getVariables());
+    async ({ component_name, framework, product }) => {
+      const spec = componentSetToSpec(await client.getComponentSet(component_name, product));
+      const tokens = variablesToStyleDictionary(await client.getVariables(product));
       return textResult(generateComponentCode(spec, framework, tokens));
     }
   );
@@ -32,12 +33,13 @@ export function registerTools(server: McpServer, client: FigmaClient): void {
       description: "Compare implementation code against Figma tokens and component spacing.",
       inputSchema: {
         code: z.string().min(1),
-        component_name: z.string().min(1)
+        component_name: z.string().min(1),
+        product: z.string().optional()
       }
     },
-    async ({ code, component_name }) => {
-      const spec = componentSetToSpec(await client.getComponentSet(component_name));
-      const tokens = variablesToStyleDictionary(await client.getVariables());
+    async ({ code, component_name, product }) => {
+      const spec = componentSetToSpec(await client.getComponentSet(component_name, product));
+      const tokens = variablesToStyleDictionary(await client.getVariables(product));
       return textResult(validateImplementation(code, spec, tokens));
     }
   );
@@ -48,12 +50,15 @@ export function registerTools(server: McpServer, client: FigmaClient): void {
       title: "Search Design System",
       description: "Search component names, descriptions, and metadata.",
       inputSchema: {
-        query: z.string().min(1)
+        query: z.string().min(1),
+        product: z.string().optional()
       }
     },
-    async ({ query }) => {
-      const names = await client.listComponentNames();
-      const specs = await Promise.all(names.map(async (name) => componentSetToSpec(await client.getComponentSet(name))));
+    async ({ query, product }) => {
+      const names = await client.listComponentNames(product);
+      const specs = await Promise.all(
+        names.map(async (name) => componentSetToSpec(await client.getComponentSet(name, product)))
+      );
       return textResult({
         matches: searchSpecs(specs, query).slice(0, 5)
       });

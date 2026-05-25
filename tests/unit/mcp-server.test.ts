@@ -34,7 +34,9 @@ describe("MCP server resources", () => {
     const resources = await client.listResources();
 
     expect(resources.resources.map((resource) => resource.uri)).toContain("figma://design-tokens");
+    expect(resources.resources.map((resource) => resource.uri)).toContain("figma://products/mock/design-tokens");
     expect(resources.resources.some((resource) => resource.uri.includes("figma://components/Button"))).toBe(true);
+    expect(resources.resources.some((resource) => resource.uri.includes("figma://products/mock/components/Button"))).toBe(true);
     expect(resources.resources.some((resource) => resource.uri.includes("figma://pages/Settings/layout"))).toBe(true);
     expect(resources.resources.some((resource) => resource.uri.includes("figma://assets/Button"))).toBe(true);
 
@@ -43,6 +45,9 @@ describe("MCP server resources", () => {
 
     const component = await client.readResource({ uri: "figma://components/Button" });
     expect(JSON.parse(resourceText(component)).props.state).toContain("Hover");
+
+    const productComponent = await client.readResource({ uri: "figma://products/mock/components/Button" });
+    expect(JSON.parse(resourceText(productComponent)).props.state).toContain("Hover");
 
     const layout = await client.readResource({ uri: "figma://pages/Settings/layout" });
     expect(JSON.parse(resourceText(layout)).componentPlacements).toHaveLength(2);

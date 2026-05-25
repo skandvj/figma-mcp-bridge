@@ -109,9 +109,27 @@ export type ValidationIssue = {
 export type FigmaClientOptions = {
   accessToken?: string;
   fileKey?: string;
+  files?: FigmaProductFile[];
+  product?: string;
+  mode?: FigmaMode;
+  configPath?: string;
   baseUrl?: string;
   cachePath?: string;
   cacheTtlMs?: number;
   rateLimitPerMinute?: number;
   useMockData?: boolean;
+};
+
+export type FigmaMode = "demo" | "production";
+
+export type FigmaProductFile = {
+  name: string;
+  fileKey: string;
+  description?: string;
+};
+
+export type FigmaFilesConfig = {
+  defaultProduct?: string;
+  files?: FigmaProductFile[];
+  products?: Record<string, { fileKey?: string; description?: string }>;
 };

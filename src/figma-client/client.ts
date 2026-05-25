@@ -6,8 +6,9 @@ import {
   MOCK_SVG,
   MOCK_VARIABLES
 } from "./mock-data.js";
+import { loadFigmaConfig } from "./config.js";
 import { optimizeSvgForReact } from "./transformers.js";
-import type { FigmaClientOptions, FigmaNode, FigmaVariable } from "./types.js";
+import type { FigmaClientOptions, FigmaMode, FigmaNode, FigmaProductFile, FigmaVariable } from "./types.js";
 
 type CacheRow = {
   value: string;
@@ -23,7 +24,9 @@ type FigmaFile = {
 
 export class FigmaClient {
   private readonly accessToken: string | undefined;
-  private readonly fileKey: string | undefined;
+  private readonly files: Map<string, FigmaProductFile>;
+  private readonly defaultProduct: string;
+  private readonly mode: FigmaMode;
   private readonly baseUrl: string;
   private readonly cacheTtlMs: number;
   private readonly rateLimitPerMinute: number;
@@ -33,11 +36,22 @@ export class FigmaClient {
 
   constructor(options: FigmaClientOptions = {}) {
     this.accessToken = options.accessToken ?? process.env.FIGMA_ACCESS_TOKEN;
-    this.fileKey = options.fileKey ?? process.env.FIGMA_FILE_KEY;
+    const figmaConfig = loadFigmaConfig({
+      accessToken: this.accessToken,
+      configPath: options.configPath,
+      fileKey: options.fileKey,
+      files: options.files,
+      mode: options.mode,
+      product: options.product,
+      useMockData: options.useMockData
+    });
+    this.files = new Map(figmaConfig.files.map((file) => [file.name, file]));
+    this.defaultProduct = figmaConfig.defaultProduct;
+    this.mode = figmaConfig.mode;
     this.baseUrl = (options.baseUrl ?? process.env.FIGMA_BASE_URL ?? "https://api.figma.com").replace(/\/$/, "");
     this.cacheTtlMs = options.cacheTtlMs ?? 5 * 60_000;
     this.rateLimitPerMinute = options.rateLimitPerMinute ?? 30;
-    this.useMockData = options.useMockData ?? (process.env.FIGMA_MOCK_DATA ? process.env.FIGMA_MOCK_DATA === "true" : (!this.accessToken || !this.fileKey));
+    this.useMockData = this.mode === "demo";
 
     const cachePath = options.cachePath ?? process.env.FIGMA_CACHE_PATH ?? "figma-cache.sqlite";
     this.db = new Database(cachePath);
@@ -50,22 +64,36 @@ export class FigmaClient {
     `);
   }
 
-  async getFile(): Promise<FigmaFile> {
-    if (this.useMockData) return MOCK_FILE;
-    this.assertConfigured();
-    return this.requestJson<FigmaFile>(`/v1/files/${this.fileKey}`);
+  get runtimeMode(): FigmaMode {
+    return this.mode;
   }
 
-  async getVariables(): Promise<FigmaVariable[]> {
+  get defaultProductName(): string {
+    return this.defaultProduct;
+  }
+
+  listProductNames(): string[] {
+    return this.files.size > 0 ? [...this.files.keys()].sort() : ["mock"];
+  }
+
+  async getFile(product?: string): Promise<FigmaFile> {
+    if (this.useMockData) return MOCK_FILE;
+    const fileKey = this.fileKeyForProduct(product);
+    this.assertConfigured(fileKey);
+    return this.requestJson<FigmaFile>(`/v1/files/${fileKey}`);
+  }
+
+  async getVariables(product?: string): Promise<FigmaVariable[]> {
     if (this.useMockData) return MOCK_VARIABLES;
-    this.assertConfigured();
+    const fileKey = this.fileKeyForProduct(product);
+    this.assertConfigured(fileKey);
     const data = await this.requestJson<{ meta?: { variables?: Record<string, unknown> } }>(
-      `/v1/files/${this.fileKey}/variables/local`
+      `/v1/files/${fileKey}/variables/local`
     );
     return Object.values(data.meta?.variables ?? {}).map((raw) => normalizeVariable(raw));
   }
 
-  async getComponentSet(name: string): Promise<FigmaNode> {
+  async getComponentSet(name: string, product?: string): Promise<FigmaNode> {
     const normalized = normalizeName(name);
     if (this.useMockData) {
       const match = MOCK_COMPONENTS.find((node) => normalizeName(node.name) === normalized);
@@ -73,7 +101,7 @@ export class FigmaClient {
       return match;
     }
 
-    const file = await this.getFile();
+    const file = await this.getFile(product);
     const match = flattenNodes(file.document)
       .filter((node) => node.type === "COMPONENT_SET" || node.type === "COMPONENT")
       .find((node) => normalizeName(node.name) === normalized);
@@ -81,7 +109,7 @@ export class FigmaClient {
     return match;
   }
 
-  async getNodeById(id: string): Promise<FigmaNode> {
+  async getNodeById(id: string, product?: string): Promise<FigmaNode> {
     if (this.useMockData) {
       const match = [...MOCK_COMPONENTS.flatMap((node) => flattenNodes(node)), ...MOCK_PAGES.flatMap((node) => flattenNodes(node))]
         .find((node) => node.id === id);
@@ -89,18 +117,19 @@ export class FigmaClient {
       return match;
     }
 
-    this.assertConfigured();
+    const fileKey = this.fileKeyForProduct(product);
+    this.assertConfigured(fileKey);
     const data = await this.requestJson<{ nodes?: Record<string, { document?: FigmaNode }> }>(
-      `/v1/files/${this.fileKey}/nodes?ids=${encodeURIComponent(id)}`
+      `/v1/files/${fileKey}/nodes?ids=${encodeURIComponent(id)}`
     );
     const node = data.nodes?.[id]?.document;
     if (!node) throw new Error(`Node not found: ${id}`);
     return node;
   }
 
-  async getPageLayout(pageName: string): Promise<FigmaNode> {
+  async getPageLayout(pageName: string, product?: string): Promise<FigmaNode> {
     const normalized = normalizeName(pageName);
-    const file = await this.getFile();
+    const file = await this.getFile(product);
     const page = flattenNodes(file.document).find(
       (node) => node.type === "CANVAS" && normalizeName(node.name) === normalized
     );
@@ -108,24 +137,24 @@ export class FigmaClient {
     return page;
   }
 
-  async listComponentNames(): Promise<string[]> {
+  async listComponentNames(product?: string): Promise<string[]> {
     if (this.useMockData) return MOCK_COMPONENTS.map((node) => node.name);
-    const file = await this.getFile();
+    const file = await this.getFile(product);
     return flattenNodes(file.document)
       .filter((node) => node.type === "COMPONENT_SET" || node.type === "COMPONENT")
       .map((node) => node.name)
       .sort();
   }
 
-  async listPageNames(): Promise<string[]> {
-    const file = await this.getFile();
+  async listPageNames(product?: string): Promise<string[]> {
+    const file = await this.getFile(product);
     return flattenNodes(file.document)
       .filter((node) => node.type === "CANVAS")
       .map((node) => node.name)
       .sort();
   }
 
-  async exportNode(idOrName: string, format: "svg" | "png" = "svg"): Promise<string> {
+  async exportNode(idOrName: string, format: "svg" | "png" = "svg", product?: string): Promise<string> {
     if (this.useMockData) {
       const component = MOCK_COMPONENTS.find(
         (node) => node.id === idOrName || normalizeName(node.name) === normalizeName(idOrName)
@@ -134,10 +163,11 @@ export class FigmaClient {
       return format === "svg" ? optimizeSvgForReact(svg ?? "") : "data:image/png;base64,mock";
     }
 
-    this.assertConfigured();
-    const nodeId = await this.resolveNodeId(idOrName);
+    const fileKey = this.fileKeyForProduct(product);
+    this.assertConfigured(fileKey);
+    const nodeId = await this.resolveNodeId(idOrName, product);
     const exportData = await this.requestJson<{ images?: Record<string, string> }>(
-      `/v1/images/${this.fileKey}?ids=${encodeURIComponent(nodeId)}&format=${format}`
+      `/v1/images/${fileKey}?ids=${encodeURIComponent(nodeId)}&format=${format}`
     );
     const assetUrl = exportData.images?.[nodeId];
     if (!assetUrl) throw new Error(`Figma export did not include asset for ${idOrName}`);
@@ -162,14 +192,22 @@ export class FigmaClient {
     this.db.close();
   }
 
-  private async resolveNodeId(idOrName: string): Promise<string> {
+  private async resolveNodeId(idOrName: string, product?: string): Promise<string> {
     if (idOrName.includes(":") || idOrName.includes("-")) return idOrName;
-    return (await this.getComponentSet(idOrName)).id;
+    return (await this.getComponentSet(idOrName, product)).id;
   }
 
-  private assertConfigured(): void {
-    if (!this.accessToken || !this.fileKey) {
-      throw new Error("FIGMA_ACCESS_TOKEN and FIGMA_FILE_KEY are required when mock data is disabled.");
+  private fileKeyForProduct(product?: string): string | undefined {
+    const requested = product ?? this.defaultProduct;
+    if (product && !this.files.has(product)) {
+      throw new Error(`Figma product not configured: ${product}`);
+    }
+    return this.files.get(requested)?.fileKey ?? this.files.get(this.defaultProduct)?.fileKey;
+  }
+
+  private assertConfigured(fileKey: string | undefined): void {
+    if (!this.accessToken || !fileKey) {
+      throw new Error("FIGMA_ACCESS_TOKEN and a configured Figma file are required when FIGMA_MODE=production.");
     }
   }
 

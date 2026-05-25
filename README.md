@@ -4,8 +4,8 @@ MCP server connecting AI coding agents to Figma design systems: design tokens, c
 
 ```mermaid
 flowchart LR
-  Figma["Figma file\nvariables, components, pages"] --> Client["FigmaClient\nREST + SQLite cache"]
-  Client --> Resources["MCP resources\nfigma://design-tokens\nfigma://components/{name}\nfigma://pages/{name}/layout\nfigma://assets/{name}"]
+  Figma["Figma files\nvariables, components, pages"] --> Client["FigmaClient\nREST + SQLite cache"]
+  Client --> Resources["MCP resources\nfigma://design-tokens\nfigma://products/{product}/..."]
   Client --> Tools["MCP tools\nextract_component_code\nvalidate_implementation\nsearch_design_system"]
   Client --> Pipeline["TokenPipeline\nCSS, Tailwind, TS, SCSS, JSON"]
   Plugin["Figma plugin\nmetadata export"] --> Client
@@ -23,12 +23,17 @@ npm run typecheck
 npm test
 ```
 
-By default the server falls back to realistic mock Figma data when `FIGMA_ACCESS_TOKEN` or `FIGMA_FILE_KEY` is missing. To use a real Figma file, fill in `.env`:
+By default `.env.example` starts in `FIGMA_MODE=demo`, which uses realistic mock Figma data for local onboarding and CI. For live users, set production mode and configure one or more real Figma files:
 
 ```bash
+cp figma.files.example.json figma.files.json
+FIGMA_MODE=production
 FIGMA_ACCESS_TOKEN=figd_...
-FIGMA_FILE_KEY=your_file_key
+FIGMA_FILES_CONFIG=figma.files.json
+FIGMA_PRODUCT=web-app
 ```
+
+`figma.files.json` supports multiple named products/files. Existing single-file setups can still use `FIGMA_FILE_KEY`.
 
 Run MCP over stdio:
 
@@ -84,6 +89,10 @@ Use [examples/claude-code-config.json](examples/claude-code-config.json) as a st
 | `figma://components/{component-name}` | Variants, props, sizing, spacing, states, usage notes, and TS props |
 | `figma://pages/{page-name}/layout` | Page auto-layout converted into flex/grid guidance |
 | `figma://assets/{asset-name}` | Optimized inline SVG for React usage |
+| `figma://products/{product}/design-tokens` | Product-scoped variables |
+| `figma://products/{product}/components/{component-name}` | Product-scoped component spec |
+| `figma://products/{product}/pages/{page-name}/layout` | Product-scoped page layout |
+| `figma://products/{product}/assets/{asset-name}` | Product-scoped asset export |
 
 ## MCP Tools
 

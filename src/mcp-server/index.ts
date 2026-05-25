@@ -42,7 +42,14 @@ export async function startSseServer(port = 3100, client = new FigmaClient()): P
   app.use(express.json({ limit: "2mb" }));
 
   app.get("/health", (_req, res) => {
-    res.json({ ok: true, name: "figma-design-system", transport: "sse" });
+    res.json({
+      ok: true,
+      name: "figma-design-system",
+      transport: "sse",
+      mode: client.runtimeMode,
+      defaultProduct: client.defaultProductName,
+      products: client.listProductNames()
+    });
   });
 
   app.post("/webhook/figma", (req, res) => {

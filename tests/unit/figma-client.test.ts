@@ -1,5 +1,9 @@
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FigmaClient } from "../../src/figma-client/client.js";
+import { loadFigmaConfig } from "../../src/figma-client/config.js";
 import {
   componentSetToSpec,
   figmaColorToCSS,
@@ -140,10 +144,67 @@ describe("FigmaClient REST mode", () => {
     expect(fileHits).toBeGreaterThanOrEqual(2);
   });
 
-  it("requires credentials when mock mode is disabled", async () => {
-    const client = new FigmaClient({ useMockData: false, cachePath: ":memory:" });
+  it("requires credentials when production mode is enabled", () => {
+    expect(() => new FigmaClient({ mode: "production", cachePath: ":memory:" })).toThrow("FIGMA_MODE=production");
+  });
+
+  it("loads multiple product files from config and routes requests by product", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "figma-config-"));
+    const configPath = join(directory, "figma.files.json");
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        defaultProduct: "web",
+        files: [
+          { name: "web", fileKey: "web-file" },
+          { name: "marketing", fileKey: "marketing-file" }
+        ]
+      })
+    );
+    const urls: string[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      urls.push(url);
+      if (url === "https://figma.test/v1/files/marketing-file") {
+        return jsonResponse({ document: { id: "root", name: "Marketing", type: "DOCUMENT", children: [] } });
+      }
+      if (url === "https://figma.test/v1/files/web-file") {
+        return jsonResponse({ document: { id: "root", name: "Web", type: "DOCUMENT", children: [] } });
+      }
+      return jsonResponse({ error: "not found" }, 404);
+    });
+    const client = new FigmaClient({
+      accessToken: "token",
+      mode: "production",
+      configPath,
+      baseUrl: "https://figma.test",
+      cachePath: ":memory:",
+      rateLimitPerMinute: 60_000
+    });
     openClients.push(client);
-    await expect(client.getFile()).rejects.toThrow("FIGMA_ACCESS_TOKEN");
+
+    expect(client.runtimeMode).toBe("production");
+    expect(client.defaultProductName).toBe("web");
+    expect(client.listProductNames()).toEqual(["marketing", "web"]);
+    expect((await client.getFile("marketing")).document?.name).toBe("Marketing");
+    expect((await client.getFile()).document?.name).toBe("Web");
+    expect(urls).toEqual(expect.arrayContaining(["https://figma.test/v1/files/marketing-file", "https://figma.test/v1/files/web-file"]));
+    await expect(client.getFile("mobile")).rejects.toThrow("Figma product not configured");
+  });
+
+  it("loads config from env-compatible inputs", () => {
+    const config = loadFigmaConfig({
+      env: {
+        FIGMA_MODE: "production",
+        FIGMA_ACCESS_TOKEN: "token",
+        FIGMA_FILE_KEY: "legacy-file",
+        FIGMA_PRODUCT: "legacy"
+      }
+    });
+
+    expect(config.mode).toBe("production");
+    expect(config.defaultProduct).toBe("legacy");
+    expect(config.files).toEqual([{ name: "legacy", fileKey: "legacy-file" }]);
   });
 });
 

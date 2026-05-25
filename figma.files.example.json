@@ -1,0 +1,15 @@
+{
+  "defaultProduct": "web-app",
+  "files": [
+    {
+      "name": "web-app",
+      "fileKey": "replace-with-web-app-figma-file-key",
+      "description": "Primary product design system"
+    },
+    {
+      "name": "marketing-site",
+      "fileKey": "replace-with-marketing-figma-file-key",
+      "description": "Marketing and public website design system"
+    }
+  ]
+}
