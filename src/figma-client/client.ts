@@ -18,8 +18,22 @@ type CacheRow = {
 type FigmaFile = {
   name?: string;
   document?: FigmaNode;
-  components?: Record<string, { name?: string }>;
-  componentSets?: Record<string, { name?: string }>;
+  components?: Record<string, FigmaComponentMetadata>;
+  componentSets?: Record<string, FigmaComponentMetadata>;
+};
+
+type FigmaComponentMetadata = {
+  key?: string;
+  name?: string;
+  description?: string;
+  componentSetId?: string;
+  documentationLinks?: Array<{ uri?: string }>;
+};
+
+type FigmaVariableCollection = {
+  id?: string;
+  name?: string;
+  modes?: Array<{ modeId?: string; name?: string }>;
 };
 
 export class FigmaClient {
@@ -87,10 +101,17 @@ export class FigmaClient {
     if (this.useMockData) return MOCK_VARIABLES;
     const fileKey = this.fileKeyForProduct(product);
     this.assertConfigured(fileKey);
-    const data = await this.requestJson<{ meta?: { variables?: Record<string, unknown> } }>(
+    const data = await this.requestJson<{
+      meta?: {
+        variables?: Record<string, unknown>;
+        variableCollections?: Record<string, FigmaVariableCollection>;
+      };
+    }>(
       `/v1/files/${fileKey}/variables/local`
     );
-    return Object.values(data.meta?.variables ?? {}).map((raw) => normalizeVariable(raw));
+    return Object.values(data.meta?.variables ?? {}).map((raw) =>
+      normalizeVariable(raw, data.meta?.variableCollections ?? {})
+    );
   }
 
   async getComponentSet(name: string, product?: string): Promise<FigmaNode> {
@@ -102,11 +123,20 @@ export class FigmaClient {
     }
 
     const file = await this.getFile(product);
-    const match = flattenNodes(file.document)
+    const documentMatch = flattenNodes(file.document)
       .filter((node) => node.type === "COMPONENT_SET" || node.type === "COMPONENT")
       .find((node) => normalizeName(node.name) === normalized);
-    if (!match) throw new Error(`Component not found: ${name}`);
-    return match;
+    if (documentMatch) return withComponentMetadata(documentMatch, file);
+
+    const metadata = findComponentMetadata(file, normalized);
+    if (metadata) {
+      try {
+        return withComponentMetadata(await this.getNodeById(metadata.id, product), file);
+      } catch {
+        // Figma metadata can outlive deleted nodes; fall through to the clear not-found error.
+      }
+    }
+    throw new Error(`Component not found: ${name}`);
   }
 
   async getNodeById(id: string, product?: string): Promise<FigmaNode> {
@@ -140,10 +170,14 @@ export class FigmaClient {
   async listComponentNames(product?: string): Promise<string[]> {
     if (this.useMockData) return MOCK_COMPONENTS.map((node) => node.name);
     const file = await this.getFile(product);
-    return flattenNodes(file.document)
+    const documentNames = flattenNodes(file.document)
       .filter((node) => node.type === "COMPONENT_SET" || node.type === "COMPONENT")
-      .map((node) => node.name)
-      .sort();
+      .map((node) => node.name);
+    const metadataNames = [
+      ...Object.values(file.componentSets ?? {}),
+      ...Object.values(file.components ?? {})
+    ].flatMap((metadata) => metadata.name ? [metadata.name] : []);
+    return [...new Set([...documentNames, ...metadataNames])].sort();
   }
 
   async listPageNames(product?: string): Promise<string[]> {
@@ -166,15 +200,23 @@ export class FigmaClient {
     const fileKey = this.fileKeyForProduct(product);
     this.assertConfigured(fileKey);
     const nodeId = await this.resolveNodeId(idOrName, product);
+    const cacheKey = `asset:${fileKey}:${nodeId}:${format}`;
+    const cached = this.getCached<string>(cacheKey);
+    if (cached) return cached;
     const exportData = await this.requestJson<{ images?: Record<string, string> }>(
       `/v1/images/${fileKey}?ids=${encodeURIComponent(nodeId)}&format=${format}`
     );
     const assetUrl = exportData.images?.[nodeId];
     if (!assetUrl) throw new Error(`Figma export did not include asset for ${idOrName}`);
-    if (format === "png") return assetUrl;
+    if (format === "png") {
+      this.setCached(cacheKey, assetUrl);
+      return assetUrl;
+    }
 
     const svg = await this.requestText(assetUrl);
-    return optimizeSvgForReact(svg);
+    const optimized = optimizeSvgForReact(svg);
+    this.setCached(cacheKey, optimized);
+    return optimized;
   }
 
   invalidateCache(prefix?: string): number {
@@ -281,25 +323,66 @@ function flattenNodes(root: FigmaNode | undefined): FigmaNode[] {
   return [root, ...(root.children ?? []).flatMap((child) => flattenNodes(child))];
 }
 
-function normalizeVariable(raw: unknown): FigmaVariable {
+function normalizeVariable(
+  raw: unknown,
+  collections: Record<string, FigmaVariableCollection> = {}
+): FigmaVariable {
   const record = raw as Record<string, unknown>;
-  return {
+  const collectionId = String(record.variableCollectionId ?? "");
+  const collection = collections[collectionId];
+  const variable: FigmaVariable = {
     id: String(record.id ?? record.key ?? record.name ?? "variable"),
     name: String(record.name ?? "variable"),
     resolvedType: normalizeResolvedType(record.resolvedType),
-    valuesByMode: normalizeValuesByMode(record.valuesByMode)
+    valuesByMode: normalizeValuesByMode(record.valuesByMode, collection)
+  };
+  if (typeof record.description === "string" && record.description) variable.description = record.description;
+  if (collection?.name) variable.collectionName = collection.name;
+  return variable;
+}
+
+function normalizeValuesByMode(
+  value: unknown,
+  collection?: FigmaVariableCollection
+): Record<string, unknown> {
+  const modeNames = Object.fromEntries(
+    (collection?.modes ?? []).flatMap((mode) => {
+      if (!mode.modeId) return [];
+      return [[mode.modeId, mode.name ?? mode.modeId]];
+    })
+  );
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>);
+    if (entries.length > 0) {
+      return Object.fromEntries(entries.map(([key, raw]) => [(modeNames[key] ?? key) || "default", raw]));
+    }
+  }
+  return { default: "" };
+}
+
+function findComponentMetadata(
+  file: FigmaFile,
+  normalizedName: string
+): (FigmaComponentMetadata & { id: string }) | undefined {
+  const entries = [
+    ...Object.entries(file.componentSets ?? {}),
+    ...Object.entries(file.components ?? {})
+  ];
+  const match = entries.find(([, metadata]) => normalizeName(metadata.name ?? "") === normalizedName);
+  if (!match) return undefined;
+  return { id: match[0], ...match[1] };
+}
+
+function withComponentMetadata(node: FigmaNode, file: FigmaFile): FigmaNode {
+  const metadata = file.componentSets?.[node.id] ?? file.components?.[node.id];
+  if (!metadata?.description || node.description) return node;
+  return {
+    ...node,
+    description: metadata.description
   };
 }
 
 function normalizeResolvedType(value: unknown): FigmaVariable["resolvedType"] {
   if (value === "COLOR" || value === "FLOAT" || value === "STRING" || value === "BOOLEAN") return value;
   return "STRING";
-}
-
-function normalizeValuesByMode(value: unknown): Record<string, unknown> {
-  if (value && typeof value === "object") {
-    const entries = Object.entries(value as Record<string, unknown>);
-    if (entries.length > 0) return Object.fromEntries(entries.map(([key, raw]) => [key || "default", raw]));
-  }
-  return { default: "" };
 }

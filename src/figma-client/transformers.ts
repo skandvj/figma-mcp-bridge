@@ -10,7 +10,15 @@ import type {
   StyleDictionaryTokens
 } from "./types.js";
 
-const TOKEN_UNIT_GROUPS = new Set(["spacing", "radius", "borderWidth"]);
+const TOKEN_UNIT_GROUPS = new Set([
+  "spacing",
+  "space",
+  "radius",
+  "radii",
+  "border-radius",
+  "borderWidth",
+  "border-width"
+]);
 
 function clampChannel(value: number): number {
   return Math.max(0, Math.min(255, Math.round(value * 255)));
@@ -98,21 +106,63 @@ export function variablesToStyleDictionary(variables: FigmaVariable[]): StyleDic
   for (const variable of variables) {
     const [group = "misc", ...rest] = variable.name.split("/");
     const tokenName = rest.join("/") || variable.name;
-    const rawValue = variable.valuesByMode.default ?? Object.values(variable.valuesByMode)[0];
-    const value = transformVariableValue(group, rawValue, variable.resolvedType);
-    insertToken(root, [toKebabCase(group), ...tokenName.split("/").map(toKebabCase)], {
+    const modes = Object.fromEntries(
+      Object.entries(variable.valuesByMode).map(([mode, rawValue]) => [
+        toKebabCase(mode || "default"),
+        transformVariableValue(group, rawValue, variable.resolvedType)
+      ])
+    );
+    const value = modes.default ?? modes.light ?? Object.values(modes)[0] ?? "";
+    const token: DesignToken = {
       value,
-      type: variable.resolvedType.toLowerCase()
+      type: tokenTypeForGroup(group, variable.resolvedType)
+    };
+    if (variable.description) token.description = variable.description;
+    if (Object.keys(modes).length > 1) token.modes = modes;
+    insertToken(root, [toKebabCase(group), ...tokenName.split("/").map(toKebabCase)], {
+      ...token
     });
   }
   return root;
 }
 
-function transformVariableValue(group: string, value: unknown, type: FigmaVariable["resolvedType"]): string | number | boolean {
+function transformVariableValue(
+  group: string,
+  value: unknown,
+  type: FigmaVariable["resolvedType"]
+): string | number | boolean | Record<string, unknown> {
+  if (isVariableAlias(value)) return `{${value.id}}`;
   if (type === "COLOR" && value && typeof value === "object") return figmaColorToCSS(value as FigmaColor);
   if (type === "FLOAT" && typeof value === "number") return TOKEN_UNIT_GROUPS.has(group) ? `${value}px` : value;
   if (type === "BOOLEAN" && typeof value === "boolean") return value;
+  if (Array.isArray(value) && group.toLowerCase().includes("shadow")) {
+    return figmaEffectsToCSS(value as FigmaEffect[]);
+  }
+  if (value && typeof value === "object" && group.toLowerCase().includes("shadow")) {
+    return figmaEffectsToCSS([value as FigmaEffect]);
+  }
+  if (value && typeof value === "object" && group.toLowerCase().includes("typography")) {
+    return figmaTypographyToCSS(value as FigmaTypographyStyle);
+  }
   return String(value ?? "");
+}
+
+function tokenTypeForGroup(group: string, type: FigmaVariable["resolvedType"]): string {
+  const normalized = group.toLowerCase();
+  if (normalized.includes("typography")) return "typography";
+  if (normalized.includes("shadow") || normalized.includes("effect")) return "shadow";
+  if (normalized.includes("radius")) return "borderRadius";
+  if (normalized.includes("spacing") || normalized === "space") return "spacing";
+  return type.toLowerCase();
+}
+
+function isVariableAlias(value: unknown): value is { type: "VARIABLE_ALIAS"; id: string } {
+  return Boolean(
+    value
+      && typeof value === "object"
+      && (value as { type?: unknown }).type === "VARIABLE_ALIAS"
+      && typeof (value as { id?: unknown }).id === "string"
+  );
 }
 
 function insertToken(root: StyleDictionaryTokens, path: string[], token: DesignToken): void {

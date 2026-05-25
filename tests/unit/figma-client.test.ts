@@ -54,7 +54,32 @@ describe("FigmaClient REST mode", () => {
         return jsonResponse({ document: { id: "root", name: "Doc", type: "DOCUMENT", children: [{ id: "node:1", name: "Button", type: "COMPONENT_SET" }] } });
       }
       if (url === "https://figma.test/v1/files/file/variables/local") {
-        return jsonResponse({ meta: { variables: { a: { id: "a", name: "color/accent", resolvedType: "COLOR", valuesByMode: { default: { r: 1, g: 0, b: 0, a: 1 } } } } } });
+        return jsonResponse({
+          meta: {
+            variableCollections: {
+              c: {
+                name: "Theme",
+                modes: [
+                  { modeId: "light", name: "Light" },
+                  { modeId: "dark", name: "Dark" }
+                ]
+              }
+            },
+            variables: {
+              a: {
+                id: "a",
+                name: "color/accent",
+                resolvedType: "COLOR",
+                variableCollectionId: "c",
+                description: "Accent color",
+                valuesByMode: {
+                  light: { r: 1, g: 0, b: 0, a: 1 },
+                  dark: { r: 0, g: 0, b: 0, a: 1 }
+                }
+              }
+            }
+          }
+        });
       }
       if (url.startsWith("https://figma.test/v1/files/file/nodes")) {
         return jsonResponse({ nodes: { "node:1": { document: { id: "node:1", name: "Button", type: "COMPONENT_SET" } } } });
@@ -81,7 +106,13 @@ describe("FigmaClient REST mode", () => {
     expect((await client.getFile()).document?.name).toBe("Doc");
     expect((await client.getFile()).document?.name).toBe("Doc");
     expect(fileHits).toBe(1);
-    expect((await client.getVariables())[0]?.name).toBe("color/accent");
+    const variables = await client.getVariables();
+    expect(variables[0]?.name).toBe("color/accent");
+    expect(variables[0]?.collectionName).toBe("Theme");
+    expect(variables[0]?.valuesByMode.Dark).toEqual({ r: 0, g: 0, b: 0, a: 1 });
+    const tokens = variablesToStyleDictionary(variables);
+    expect(JSON.stringify(tokens)).toContain("\"modes\"");
+    expect(JSON.stringify(tokens)).toContain("#000000");
     expect((await client.getNodeById("node:1")).name).toBe("Button");
     expect(await client.exportNode("node:1", "svg")).toContain("strokeWidth");
     expect(client.invalidateCache()).toBeGreaterThan(0);
@@ -206,6 +237,56 @@ describe("FigmaClient REST mode", () => {
     expect(config.defaultProduct).toBe("legacy");
     expect(config.files).toEqual([{ name: "legacy", fileKey: "legacy-file" }]);
   });
+
+  it("uses component metadata for lookup and caches exported assets by file and node", async () => {
+    let imageHits = 0;
+    let assetHits = 0;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url === "https://figma.test/v1/files/file") {
+        return jsonResponse({
+          document: { id: "root", name: "Doc", type: "DOCUMENT", children: [] },
+          componentSets: {
+            "component:1": { name: "Button", description: "Metadata button" }
+          }
+        });
+      }
+      if (url.startsWith("https://figma.test/v1/files/file/nodes")) {
+        return jsonResponse({
+          nodes: {
+            "component:1": {
+              document: { id: "component:1", name: "Button", type: "COMPONENT_SET" }
+            }
+          }
+        });
+      }
+      if (url.startsWith("https://figma.test/v1/images/file")) {
+        imageHits += 1;
+        return jsonResponse({ images: { "component:1": "https://assets.test/button.svg" } });
+      }
+      if (url === "https://assets.test/button.svg") {
+        assetHits += 1;
+        return new Response('<svg><path stroke-width="2" /></svg>', { status: 200 });
+      }
+      return jsonResponse({ error: "not found" }, 404);
+    });
+    const client = new FigmaClient({
+      accessToken: "token",
+      fileKey: "file",
+      baseUrl: "https://figma.test",
+      cachePath: ":memory:",
+      rateLimitPerMinute: 60_000,
+      useMockData: false
+    });
+    openClients.push(client);
+
+    expect(await client.listComponentNames()).toEqual(["Button"]);
+    expect((await client.getComponentSet("Button")).description).toBe("Metadata button");
+    expect(await client.exportNode("Button", "svg")).toContain("strokeWidth");
+    expect(await client.exportNode("Button", "svg")).toContain("strokeWidth");
+    expect(imageHits).toBe(1);
+    expect(assetHits).toBe(1);
+  });
 });
 
 function jsonResponse(value: unknown, status = 200): Response {
@@ -237,9 +318,27 @@ describe("transformers", () => {
 
     const tokens = variablesToStyleDictionary([
       { id: "a", name: "spacing/sm", resolvedType: "FLOAT", valuesByMode: { default: 8 } },
-      { id: "b", name: "enabled", resolvedType: "BOOLEAN", valuesByMode: { default: true } }
+      { id: "b", name: "enabled", resolvedType: "BOOLEAN", valuesByMode: { default: true } },
+      { id: "c", name: "radius/sm", resolvedType: "FLOAT", valuesByMode: { default: 6 } },
+      {
+        id: "d",
+        name: "typography/body",
+        resolvedType: "STRING",
+        valuesByMode: { default: { fontFamily: "Inter", fontSize: 16, lineHeightPx: 24 } }
+      },
+      {
+        id: "e",
+        name: "shadow/card",
+        resolvedType: "STRING",
+        valuesByMode: {
+          default: [{ type: "DROP_SHADOW", offset: { x: 0, y: 4 }, radius: 12, color: { r: 0, g: 0, b: 0, a: 0.2 } }]
+        }
+      }
     ]);
     expect(JSON.stringify(tokens)).toContain("8px");
+    expect(JSON.stringify(tokens)).toContain("6px");
+    expect(JSON.stringify(tokens)).toContain("Inter");
+    expect(JSON.stringify(tokens)).toContain("boxShadow");
 
     const spec = componentSetToSpec({
       id: "tabs",

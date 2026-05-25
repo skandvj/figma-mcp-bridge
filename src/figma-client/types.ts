@@ -38,6 +38,11 @@ export type FigmaNode = {
   effects?: FigmaEffect[];
   style?: FigmaTypographyStyle;
   variantProperties?: Record<string, string>;
+  componentPropertyDefinitions?: Record<string, {
+    type?: string;
+    defaultValue?: unknown;
+    variantOptions?: string[];
+  }>;
 };
 
 export type FigmaTypographyStyle = {
@@ -53,12 +58,15 @@ export type FigmaVariable = {
   name: string;
   resolvedType: "COLOR" | "FLOAT" | "STRING" | "BOOLEAN";
   valuesByMode: Record<string, unknown>;
+  description?: string;
+  collectionName?: string;
 };
 
 export type DesignToken = {
-  value: string | number | boolean;
+  value: string | number | boolean | Record<string, unknown>;
   type?: string;
   description?: string;
+  modes?: Record<string, string | number | boolean | Record<string, unknown>>;
 };
 
 export type StyleDictionaryTokens = Record<string, unknown>;
