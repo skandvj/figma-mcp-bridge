@@ -102,6 +102,22 @@ Use [examples/claude-code-config.json](examples/claude-code-config.json) as a st
 | `validate_implementation` | Scores code against component spacing, token usage, and accessibility signals |
 | `search_design_system` | Searches component names, descriptions, variants, and usage metadata |
 
+## Team Codegen Configuration
+
+Copy `codegen.config.example.json` to `codegen.config.json` when generated code should wrap your team component library instead of scaffolding bare elements:
+
+```json
+{
+  "teamPackage": "@company/ui",
+  "allowedFrameworks": ["react", "vue", "svelte"],
+  "componentStrategy": "wrap-existing",
+  "tokenNaming": "prefixed-css-var",
+  "tokenPrefix": "ds"
+}
+```
+
+`extract_component_code` respects this config. For example, React output imports `Button` from `@company/ui`, wraps it as `BaseButton`, and uses token references like `var(--ds-color-primary)` rather than raw hex values from Figma. Use `componentStrategy: "scaffold"` when you want standalone starter components.
+
 ## Validation And Scoring
 
 `validate_implementation` returns:

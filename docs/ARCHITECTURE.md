@@ -7,6 +7,8 @@ Figma MCP Bridge has four layers:
 3. `MCP server`: exposes resources and tools over stdio or SSE.
 4. `TokenPipeline`: writes production-ready token artifacts for app repositories.
 
+Code generation reads `codegen.config.json` or `CODEGEN_*` environment variables. Teams can restrict target frameworks, wrap existing components from a package such as `@company/ui`, and choose a token naming convention so generated code references CSS variables rather than literal Figma values.
+
 ## Runtime Flow
 
 ```mermaid

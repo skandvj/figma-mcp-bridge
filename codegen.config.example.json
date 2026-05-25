@@ -1,0 +1,7 @@
+{
+  "teamPackage": "@company/ui",
+  "allowedFrameworks": ["react", "vue", "svelte"],
+  "componentStrategy": "wrap-existing",
+  "tokenNaming": "prefixed-css-var",
+  "tokenPrefix": "ds"
+}

@@ -4,6 +4,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { FigmaClient } from "../../src/figma-client/client.js";
 import { createMcpServer } from "../../src/mcp-server/index.js";
 import { generateComponentCode, validateImplementation } from "../../src/mcp-server/tools.js";
+import type { CodegenConfig } from "../../src/mcp-server/codegen-config.js";
 import { componentSetToSpec, variablesToStyleDictionary } from "../../src/figma-client/transformers.js";
 import { analyzeImplementation } from "../../src/validators/code-analysis.js";
 
@@ -105,6 +106,26 @@ describe("MCP tools", () => {
 
       expect(generateComponentCode(spec, "vue", tokens).code).toContain("<template>");
       expect(generateComponentCode(spec, "svelte", tokens).code).toContain("<script lang=\"ts\">");
+
+      const companyConfig: CodegenConfig = {
+        teamPackage: "@company/ui",
+        allowedFrameworks: ["react"],
+        componentStrategy: "wrap-existing",
+        tokenNaming: "prefixed-css-var",
+        tokenPrefix: "ds"
+      };
+      const wrapped = generateComponentCode(spec, "react", tokens, companyConfig);
+      expect(wrapped.dependencies).toContain("@company/ui");
+      expect(wrapped.code).toContain('import { Button as BaseButton } from "@company/ui";');
+      expect(wrapped.code).toContain("var(--ds-color-primary)");
+      expect(wrapped.code).not.toContain("#2563EB");
+
+      expect(() =>
+        generateComponentCode(spec, "svelte", tokens, {
+          ...companyConfig,
+          allowedFrameworks: ["react"]
+        })
+      ).toThrow("not enabled");
 
       const validation = validateImplementation("<div style=\"color:#FFFFFF\">Label</div>", spec, tokens);
       expect(validation.score).toBeLessThan(80);

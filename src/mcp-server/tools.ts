@@ -4,10 +4,17 @@ import { FigmaClient } from "../figma-client/client.js";
 import { componentSetToSpec, variablesToStyleDictionary } from "../figma-client/transformers.js";
 import type { ComponentSpec, StyleDictionaryTokens, ValidationIssue } from "../figma-client/types.js";
 import { analyzeImplementation } from "../validators/code-analysis.js";
-
-const FRAMEWORKS = ["react", "vue", "svelte"] as const;
+import {
+  assertFrameworkAllowed,
+  FRAMEWORKS,
+  loadCodegenConfig,
+  type CodegenConfig,
+  type Framework
+} from "./codegen-config.js";
 
 export function registerTools(server: McpServer, client: FigmaClient): void {
+  const codegenConfig = loadCodegenConfig();
+
   server.registerTool(
     "extract_component_code",
     {
@@ -20,9 +27,10 @@ export function registerTools(server: McpServer, client: FigmaClient): void {
       }
     },
     async ({ component_name, framework, product }) => {
+      assertFrameworkAllowed(framework, codegenConfig);
       const spec = componentSetToSpec(await client.getComponentSet(component_name, product));
       const tokens = variablesToStyleDictionary(await client.getVariables(product));
-      return textResult(generateComponentCode(spec, framework, tokens));
+      return textResult(generateComponentCode(spec, framework, tokens, codegenConfig));
     }
   );
 
@@ -68,16 +76,21 @@ export function registerTools(server: McpServer, client: FigmaClient): void {
 
 export function generateComponentCode(
   spec: ComponentSpec,
-  framework: (typeof FRAMEWORKS)[number],
-  tokens: StyleDictionaryTokens
+  framework: Framework,
+  tokens: StyleDictionaryTokens,
+  config: CodegenConfig = loadCodegenConfig()
 ) {
-  const tokensUsed = inferTokensUsed(spec, tokens);
-  const dependencies = framework === "react" ? ["react"] : [];
+  assertFrameworkAllowed(framework, config);
+  const tokensUsed = inferTokensUsed(spec, tokens, config);
+  const dependencies = [
+    ...(framework === "react" ? ["react"] : []),
+    ...(config.teamPackage ? [config.teamPackage] : [])
+  ];
   const code = framework === "react"
-    ? generateReactCode(spec, tokensUsed)
+    ? generateReactCode(spec, tokensUsed, config)
     : framework === "vue"
-      ? generateVueCode(spec, tokensUsed)
-      : generateSvelteCode(spec, tokensUsed);
+      ? generateVueCode(spec, tokensUsed, config)
+      : generateSvelteCode(spec, tokensUsed, config);
 
   return {
     code,
@@ -143,11 +156,20 @@ export function validateImplementation(
   };
 }
 
-function generateReactCode(spec: ComponentSpec, tokensUsed: string[]): string {
+function generateReactCode(spec: ComponentSpec, tokensUsed: string[], config: CodegenConfig): string {
   const componentName = pascalCase(spec.name);
-  const interfaceSource = spec.typescriptInterface.replace("children?: React.ReactNode;", "children?: ReactNode;");
+  const interfaceSource = spec.typescriptInterface
+    .replace("children?: React.ReactNode;", "children?: ReactNode;\n  style?: CSSProperties;");
   const cssVars = tokensUsed.map((token) => `    "${token}": "var(${token})"`).join(",\n");
+  const teamImport = config.teamPackage
+    ? `import { ${componentName} as Base${componentName} } from "${config.teamPackage}";\n`
+    : "";
+  const element = config.componentStrategy === "wrap-existing" && config.teamPackage
+    ? `Base${componentName}`
+    : "button";
+
   return `import type { CSSProperties, ReactNode } from "react";
+${teamImport}
 
 ${interfaceSource}
 
@@ -157,24 +179,33 @@ ${cssVars}
   } as CSSProperties;
 
   return (
-    <button className="${kebabCase(spec.name)}" style={style} aria-label={typeof children === "string" ? children : undefined} data-figma-component="${spec.nodeId}">
+    <${element} {...props} className="${kebabCase(spec.name)}" style={{ ...style, ...props.style }} aria-label={typeof children === "string" ? children : undefined} data-figma-component="${spec.nodeId}">
       {children}
-    </button>
+    </${element}>
   );
 }`;
 }
 
-function generateVueCode(spec: ComponentSpec, tokensUsed: string[]): string {
+function generateVueCode(spec: ComponentSpec, tokensUsed: string[], config: CodegenConfig): string {
+  const componentName = pascalCase(spec.name);
+  const teamImport = config.teamPackage
+    ? `import { ${componentName} as Base${componentName} } from "${config.teamPackage}";\n`
+    : "";
+  const element = config.componentStrategy === "wrap-existing" && config.teamPackage ? `Base${componentName}` : "button";
   return `<script setup lang="ts">
+${teamImport}const tokenStyle = {
+${tokensUsed.map((token) => `  "${token}": "var(${token})"`).join(",\n")}
+};
+
 defineProps<{
   ${Object.entries(spec.props).map(([prop, values]) => `${prop}?: ${values.map((value) => `"${value}"`).join(" | ") || "string"}`).join(";\n  ")}
 }>();
 </script>
 
 <template>
-  <button class="${kebabCase(spec.name)}" data-figma-component="${spec.nodeId}">
+  <${element} class="${kebabCase(spec.name)}" :style="tokenStyle" data-figma-component="${spec.nodeId}">
     <slot />
-  </button>
+  </${element}>
 </template>
 
 <style scoped>
@@ -184,14 +215,27 @@ ${tokensUsed.map((token) => `  ${token}: var(${token});`).join("\n")}
 </style>`;
 }
 
-function generateSvelteCode(spec: ComponentSpec, tokensUsed: string[]): string {
+function generateSvelteCode(spec: ComponentSpec, tokensUsed: string[], config: CodegenConfig): string {
+  const componentName = pascalCase(spec.name);
+  const teamImport = config.teamPackage
+    ? `  import { ${componentName} as Base${componentName} } from "${config.teamPackage}";\n`
+    : "";
+  const wrapped = config.componentStrategy === "wrap-existing" && config.teamPackage;
+  const openTag = wrapped
+    ? `<svelte:component this={Base${componentName}} class="${kebabCase(spec.name)}" style={tokenStyle} data-figma-component="${spec.nodeId}">`
+    : `<button class="${kebabCase(spec.name)}" style={tokenStyle} data-figma-component="${spec.nodeId}">`;
+  const closeTag = wrapped ? "</svelte:component>" : "</button>";
   return `<script lang="ts">
+${teamImport}  const tokenStyle = {
+${tokensUsed.map((token) => `    "${token}": "var(${token})"`).join(",\n")}
+  };
+
   ${Object.keys(spec.props).map((prop) => `export let ${prop}: string | undefined = undefined;`).join("\n  ")}
 </script>
 
-<button class="${kebabCase(spec.name)}" data-figma-component="${spec.nodeId}">
+${openTag}
   <slot />
-</button>
+${closeTag}
 
 <style>
   .${kebabCase(spec.name)} {
@@ -212,12 +256,12 @@ function searchSpecs(specs: ComponentSpec[], query: string) {
     .sort((a, b) => b.score - a.score || a.spec.name.localeCompare(b.spec.name));
 }
 
-function inferTokensUsed(spec: ComponentSpec, tokens: StyleDictionaryTokens): string[] {
+function inferTokensUsed(spec: ComponentSpec, tokens: StyleDictionaryTokens, config: CodegenConfig): string[] {
   const flattened = flattenTokens(tokens);
   const spacing = new Set(Object.values(spec.spacing).map(String));
   const matched = flattened
     .filter((token) => spacing.has(String(token.value)) || token.path.startsWith("color."))
-    .map((token) => `--${token.path.replace(/\./g, "-")}`);
+    .map((token) => cssVariableForPath(token.path, config));
   return [...new Set(matched)].slice(0, 8);
 }
 
@@ -241,6 +285,14 @@ function flattenTokenValues(tokens: StyleDictionaryTokens): string[] {
 function cssVarNameForValue(tokens: StyleDictionaryTokens, value: string): string {
   const token = flattenTokens(tokens).find((candidate) => candidate.value === value);
   return token ? `--${token.path.replace(/\./g, "-")}` : "";
+}
+
+function cssVariableForPath(path: string, config: CodegenConfig): string {
+  const base = path.replace(/\./g, "-");
+  if (config.tokenNaming === "prefixed-css-var" && config.tokenPrefix) {
+    return `--${config.tokenPrefix}-${base}`;
+  }
+  return `--${base}`;
 }
 
 function pascalCase(value: string): string {
