@@ -2,7 +2,7 @@
 
 Figma MCP Bridge has four layers:
 
-1. `FigmaClient`: talks to Figma REST APIs, supports demo/production modes, routes multiple named product files, caches responses in SQLite, rate-limits requests, and provides mock data only in demo mode.
+1. `FigmaClient`: talks to Figma REST APIs in production mode, routes multiple named product files, caches responses in SQLite, and rate-limits requests.
 2. `Transformers`: convert Figma variables, modes, colors, typography, spacing, radius, shadows, component metadata, layout specs, and React-friendly SVG.
 3. `MCP server`: exposes resources and tools over stdio or SSE.
 4. `TokenPipeline`: writes production-ready token artifacts for app repositories.

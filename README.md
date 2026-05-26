@@ -33,7 +33,7 @@ FIGMA_FILES_CONFIG=figma.files.json
 FIGMA_PRODUCT=web-app
 ```
 
-`figma.files.json` supports multiple named products/files. Existing single-file setups can still use `FIGMA_FILE_KEY`. For local onboarding and CI, set `FIGMA_MODE=demo` or copy `.env.example`; demo mode uses realistic mock Figma data and never calls the Figma API.
+`figma.files.json` supports multiple named products/files. Existing single-file setups can still use `FIGMA_FILE_KEY`. Production mode requires a real Figma token and file configuration so the bridge reads the source design system instead of bundled placeholder data.
 
 ## Connect To Claude Code In 3 Commands
 
@@ -62,9 +62,11 @@ For production SSE, set either `MCP_API_KEY` or `MCP_BASIC_AUTH_USERNAME`/`MCP_B
 
 ## Public Product Dashboard And Deployment
 
-The `public/` directory contains a Vercel-hostable product dashboard for recruiters, design-platform teams, and non-technical reviewers. It includes an interactive demo workspace where users can browse components, inspect design tokens, generate React/Vue/Svelte scaffolds, and score implementation code directly in the browser.
+The `public/` directory contains a Vercel-hostable product dashboard for recruiters, design-platform teams, and non-technical reviewers. The dashboard requires a live Figma personal access token and file key, loads components and variables from that file through `/api/figma`, generates React/Vue/Svelte scaffolds, and scores implementation code against the connected design system.
 
-See [docs/VERCEL_DEPLOYMENT.md](docs/VERCEL_DEPLOYMENT.md) for the recommended split: host the public dashboard on Vercel, deploy the MCP SSE runtime as a long-running Node container for real Figma files, and point the dashboard at that runtime URL.
+Tokens are not saved by the browser app or committed into Vercel environment variables. The dashboard sends the token only for the current Figma API request and exposes a "Forget credentials" action for the session.
+
+See [docs/VERCEL_DEPLOYMENT.md](docs/VERCEL_DEPLOYMENT.md) for the recommended split: host the public dashboard on Vercel, deploy the MCP SSE runtime as a long-running Node container for agent integrations, and use the same Figma file key in both places.
 
 Generate token outputs:
 
@@ -227,7 +229,7 @@ npm test
 npm run build
 ```
 
-Current suite covers MCP resources/tools, Figma REST/mock clients, transformer helpers, token generation, and the full MCP flow with in-memory transports.
+Current suite covers MCP resources/tools, Figma REST clients, transformer helpers, token generation, and the full MCP flow with in-memory transports.
 
 Optional live Figma verification is gated so CI can pass without secrets:
 
@@ -242,7 +244,7 @@ npm run test:live:figma
 ## Project Structure
 
 ```text
-src/figma-client      Figma REST client, cache, mock data, transformers
+src/figma-client      Figma REST client, cache, transformers
 src/mcp-server        MCP resource and tool registration, stdio/SSE server
 src/token-pipeline    Token extraction and output generators
 src/validators        Implementation parsing and scoring helpers

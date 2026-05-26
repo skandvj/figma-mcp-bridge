@@ -1,6 +1,6 @@
 # End-To-End Guide
 
-This guide takes the repo from clone to an agent consuming a real Figma design system. Demo mode is available for CI and onboarding, but production mode is the primary path for users.
+This guide takes the repo from clone to an agent consuming a real Figma design system. Production mode is the primary user path.
 
 ## 1. Install And Configure
 
@@ -20,7 +20,7 @@ FIGMA_PRODUCT=web-app
 MCP_API_KEY=replace-with-random-api-key
 ```
 
-Use `FIGMA_MODE=demo` when you want the mock design system for tests or offline development.
+The public Vercel dashboard also supports this live path: open the deployed app, paste the same Figma token and file key, then inspect components, generate code, and run validation from the browser.
 
 ## 2. Start MCP
 

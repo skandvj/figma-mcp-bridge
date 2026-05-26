@@ -13,24 +13,25 @@
           <div class="brand-mark">FM</div>
           <div>
             <h1>Figma MCP Bridge</h1>
-            <p>Design system to production code</p>
+            <p>Live Figma to production code</p>
           </div>
         </div>
 
         <nav class="steps" aria-label="Product navigation">
-          <button class="step is-active" data-panel="workspace">Workspace</button>
+          <button class="step is-active" data-panel="connect">Connect Figma</button>
+          <button class="step" data-panel="workspace">Workspace</button>
           <button class="step" data-panel="components">Components</button>
           <button class="step" data-panel="tokens">Tokens</button>
           <button class="step" data-panel="generate">Generate</button>
           <button class="step" data-panel="validate">Validate</button>
-          <button class="step" data-panel="connect">Connect Figma</button>
+          <button class="step" data-panel="agent">Agent setup</button>
         </nav>
 
         <section class="runtime-card">
-          <span class="dot ok" id="statusDot"></span>
+          <span class="dot" id="statusDot"></span>
           <div>
-            <strong id="statusLabel">Demo workspace ready</strong>
-            <small id="statusDetail">Interactive product mode</small>
+            <strong id="statusLabel">No Figma file connected</strong>
+            <small id="statusDetail">Connect a live file to begin</small>
           </div>
         </section>
       </aside>
@@ -39,7 +40,7 @@
         <header class="topbar">
           <div>
             <p class="eyebrow">Design System Control Center</p>
-            <h2 id="panelTitle">Workspace</h2>
+            <h2 id="panelTitle">Connect Figma</h2>
           </div>
           <div class="top-actions">
             <a href="https://github.com/skandvj/figma-mcp-bridge" target="_blank" rel="noreferrer">GitHub</a>
@@ -50,40 +51,67 @@
         <section class="hero-grid">
           <article class="metric">
             <span>Components</span>
-            <strong id="componentCount">4</strong>
-            <small>ready for AI codegen</small>
+            <strong id="componentCount">--</strong>
+            <small>from your Figma file</small>
           </article>
           <article class="metric">
-            <span>Token Families</span>
-            <strong>4</strong>
-            <small>color, spacing, type, radius</small>
+            <span>Tokens</span>
+            <strong id="tokenCount">--</strong>
+            <small>local Figma variables</small>
           </article>
           <article class="metric">
             <span>Validation Score</span>
             <strong id="latestScore">--</strong>
-            <small>implementation quality</small>
+            <small>against your design system</small>
           </article>
         </section>
 
-        <section class="panel is-visible" id="workspace">
+        <section class="panel is-visible" id="connect">
           <div class="panel-copy">
-            <h3>Product workspace</h3>
-            <p>Select a component, inspect the design contract, generate code, and score an implementation.</p>
+            <h3>Connect a real Figma file</h3>
+            <p>Enter your Figma personal access token and file key. The token is sent only to this Vercel API request and is not stored by the app.</p>
+          </div>
+          <div class="form-grid live-grid">
+            <label>
+              Figma access token
+              <input id="figmaToken" type="password" placeholder="figd_..." autocomplete="off">
+            </label>
+            <label>
+              File key
+              <input id="fileKey" placeholder="Paste the key from your Figma file URL" autocomplete="off">
+            </label>
+            <label>
+              Product name
+              <input id="productName" value="web-app" autocomplete="off">
+            </label>
+            <button class="primary" id="connectFile">Connect file</button>
+          </div>
+          <div class="toolbar">
+            <button class="secondary" id="forgetConnection">Forget credentials</button>
+          </div>
+          <p class="notice" id="connectionNotice">Need the file key? Open a Figma file and copy the part after `/file/` or `/design/` in the URL.</p>
+          <div class="readiness" id="fileReadiness"></div>
+        </section>
+
+        <section class="panel" id="workspace">
+          <div class="panel-copy">
+            <h3>Live workspace</h3>
+            <p>Once connected, this page becomes a working design-system bridge: browse real components, inspect variables, generate code, and score implementation drift.</p>
           </div>
           <div class="workflow-grid">
             <article class="workflow-card">
               <span>1</span>
-              <strong>Pick component</strong>
-              <small id="currentComponentName">Button</small>
+              <strong>Connected file</strong>
+              <small id="currentFileName">Waiting for Figma</small>
             </article>
             <article class="workflow-card">
               <span>2</span>
-              <strong>Generate code</strong>
-              <small id="currentFrameworkName">React</small>
+              <strong>Selected component</strong>
+              <small id="currentComponentName">None selected</small>
             </article>
             <article class="workflow-card">
               <span>3</span>
-              <strong>Validate result</strong>
+              <strong>Quality score</strong>
               <small id="currentScoreLabel">Not scored yet</small>
             </article>
           </div>
@@ -102,12 +130,12 @@
         <section class="panel" id="components">
           <div class="panel-copy">
             <h3>Component inventory</h3>
-            <p>Browse the demo design system exactly as an AI coding agent would see it through MCP resources.</p>
+            <p>Components are loaded from the connected Figma file and exposed in the same structure an MCP client consumes.</p>
           </div>
           <div class="component-layout">
             <div class="component-list" id="componentList"></div>
             <div class="surface">
-              <h4 id="componentDetailTitle">Button</h4>
+              <h4 id="componentDetailTitle">No component selected</h4>
               <div id="componentDetailPreview" class="component-preview"></div>
               <dl class="contract-list" id="componentDetails"></dl>
               <pre class="output compact-output" id="componentResource"></pre>
@@ -118,7 +146,7 @@
         <section class="panel" id="tokens">
           <div class="panel-copy">
             <h3>Design tokens</h3>
-            <p>Token values are exposed in Style Dictionary shape and translated into CSS variables for generated code.</p>
+            <p>Local Figma variables are converted to CSS custom properties and Style Dictionary-shaped JSON for implementation.</p>
           </div>
           <div class="token-grid" id="tokenGrid"></div>
           <pre class="output" id="tokenJson"></pre>
@@ -127,7 +155,7 @@
         <section class="panel" id="generate">
           <div class="panel-copy">
             <h3>Generate production scaffold</h3>
-            <p>Output uses team package imports, token references, typed props, and accessibility attributes.</p>
+            <p>Generated code uses your selected component metadata, team package import, token references, typed props, and accessibility attributes.</p>
           </div>
           <div class="form-grid">
             <label>
@@ -158,13 +186,12 @@
         <section class="panel" id="validate">
           <div class="panel-copy">
             <h3>Score implementation</h3>
-            <p>Validation checks token usage, spacing scale, props, accessibility, and responsive layout signals.</p>
+            <p>Validation checks raw colors, token references, spacing scale, component props, accessibility, and responsive layout hints against your loaded Figma data.</p>
           </div>
           <div class="toolbar">
-            <button class="secondary" id="loadGoodSample">Load passing sample</button>
-            <button class="secondary" id="loadBadSample">Load failing sample</button>
+            <button class="secondary" id="useGeneratedCode">Use generated code</button>
           </div>
-          <textarea id="codeSample" rows="12"></textarea>
+          <textarea id="codeSample" rows="12" placeholder="Paste React, Vue, Svelte, or HTML/CSS code to validate against the connected Figma component."></textarea>
           <button class="primary" id="runValidation">Run validation</button>
           <div class="validation-grid">
             <section class="score-panel">
@@ -179,10 +206,10 @@
           </div>
         </section>
 
-        <section class="panel" id="connect">
+        <section class="panel" id="agent">
           <div class="panel-copy">
-            <h3>Connect live Figma</h3>
-            <p>Production teams deploy the MCP SSE runtime privately, then use this dashboard to verify readiness and copy agent config.</p>
+            <h3>Agent setup</h3>
+            <p>Use this config to connect Claude Code, Codex, or another MCP-capable agent to the long-running MCP runtime for the same Figma file.</p>
           </div>
           <div class="form-grid connect-grid">
             <label>
@@ -210,6 +237,6 @@
         </section>
       </section>
     </main>
-    <script src="/app.js?v=product-dashboard" type="module"></script>
+    <script src="/app.js?v=live-product" type="module"></script>
   </body>
 </html>

@@ -1,76 +1,12 @@
-const demo = {
-  product: "SaaS Web App",
-  tokens: {
-    color: {
-      primary: { value: "#0E7490", css: "var(--ds-color-primary)" },
-      surface: { value: "#FFFFFF", css: "var(--ds-color-surface)" },
-      ink: { value: "#182132", css: "var(--ds-color-ink)" },
-      muted: { value: "#66758C", css: "var(--ds-color-muted)" }
-    },
-    spacing: {
-      sm: { value: "8px", css: "var(--ds-spacing-sm)" },
-      md: { value: "16px", css: "var(--ds-spacing-md)" },
-      lg: { value: "24px", css: "var(--ds-spacing-lg)" }
-    },
-    typography: {
-      body: { value: "16px", css: "var(--ds-type-body)" },
-      title: { value: "24px", css: "var(--ds-type-title)" }
-    },
-    radius: {
-      sm: { value: "6px", css: "var(--ds-radius-sm)" },
-      md: { value: "8px", css: "var(--ds-radius-md)" }
-    }
-  },
-  components: [
-    {
-      name: "Button",
-      description: "Primary command button",
-      variants: ["primary", "secondary", "ghost"],
-      props: ["variant", "size", "loading", "children"],
-      spacing: "12px 18px",
-      radius: "var(--ds-radius-md)",
-      aria: "native button plus aria-busy when loading",
-      responsive: "fixed height, flexible label",
-      resource: "figma://components/Button"
-    },
-    {
-      name: "ProfileCard",
-      description: "User profile summary card",
-      variants: ["compact", "expanded"],
-      props: ["name", "role", "avatarUrl", "status"],
-      spacing: "var(--ds-spacing-md)",
-      radius: "var(--ds-radius-md)",
-      aria: "article with aria-label",
-      responsive: "single column on mobile, media row on desktop",
-      resource: "figma://components/ProfileCard"
-    },
-    {
-      name: "ToggleRow",
-      description: "Settings row with switch control",
-      variants: ["on", "off", "disabled"],
-      props: ["label", "description", "checked", "disabled"],
-      spacing: "var(--ds-spacing-md)",
-      radius: "var(--ds-radius-md)",
-      aria: "switch role with aria-checked",
-      responsive: "label wraps before switch",
-      resource: "figma://components/ToggleRow"
-    },
-    {
-      name: "EmptyState",
-      description: "Empty data state with action",
-      variants: ["neutral", "success", "warning"],
-      props: ["title", "message", "actionLabel"],
-      spacing: "var(--ds-spacing-lg)",
-      radius: "var(--ds-radius-md)",
-      aria: "section labelled by title",
-      responsive: "centered content with max width",
-      resource: "figma://components/EmptyState"
-    }
-  ]
-};
-
 const state = {
-  component: demo.components[0],
+  token: "",
+  fileKey: "",
+  productName: "web-app",
+  file: null,
+  tokens: [],
+  components: [],
+  component: null,
+  componentSpec: null,
   framework: "react",
   latestScore: null,
   runtime: null
@@ -94,34 +30,33 @@ steps.forEach((step) => {
   step.addEventListener("click", () => showPanel(step.dataset.panel));
 });
 
+document.querySelector("#connectFile").addEventListener("click", connectFile);
+document.querySelector("#forgetConnection").addEventListener("click", forgetConnection);
 componentSelect.addEventListener("change", () => setComponent(componentSelect.value));
 frameworkSelect.addEventListener("change", () => {
   state.framework = frameworkSelect.value;
-  document.querySelector("#currentFrameworkName").textContent = labelForFramework(state.framework);
   renderGeneratedCode();
   renderMcpPayload();
 });
-
+teamPackage.addEventListener("input", () => {
+  renderGeneratedCode();
+  renderClaudeConfig();
+});
 document.querySelector("#generateCode").addEventListener("click", renderGeneratedCode);
 document.querySelector("#copyGeneratedCode").addEventListener("click", () => copyText(generatedCode.textContent, "#copyGeneratedCode"));
 document.querySelector("#sendToValidator").addEventListener("click", () => {
   codeSample.value = generatedCode.textContent;
   showPanel("validate");
 });
+document.querySelector("#useGeneratedCode").addEventListener("click", () => {
+  codeSample.value = generatedCode.textContent;
+});
 document.querySelector("#runValidation").addEventListener("click", runValidation);
-document.querySelector("#loadGoodSample").addEventListener("click", () => {
-  codeSample.value = generateReactCode(state.component);
-  runValidation();
-});
-document.querySelector("#loadBadSample").addEventListener("click", () => {
-  codeSample.value = badSampleFor(state.component);
-  runValidation();
-});
 document.querySelector("#checkRuntime").addEventListener("click", checkRuntime);
 document.querySelector("#copyConfig").addEventListener("click", () => copyText(document.querySelector("#claudeConfig").textContent, "#copyConfig"));
 document.querySelector("#copyProjectPitch").addEventListener("click", () => {
   copyText(
-    "Figma MCP Bridge turns Figma design systems into AI-agent-readable resources, generates token-correct UI code, and scores implementations against the source design contract.",
+    "Figma MCP Bridge connects a live Figma design system to AI coding agents, generates token-correct UI code, and scores implementations against the source design contract.",
     "#copyProjectPitch"
   );
 });
@@ -129,60 +64,185 @@ document.querySelector("#copyProjectPitch").addEventListener("click", () => {
 init();
 
 function init() {
-  document.querySelector("#componentCount").textContent = String(demo.components.length);
-  componentSelect.innerHTML = demo.components
-    .map((component) => `<option value="${component.name}">${component.name}</option>`)
-    .join("");
+  renderEmptyState();
+  renderClaudeConfig();
+  renderReadiness({ mode: "not connected", products: [], sseAuthConfigured: false, webhookSecretConfigured: false });
+}
+
+async function connectFile() {
+  const token = document.querySelector("#figmaToken").value.trim();
+  const fileKey = normalizeFileKey(document.querySelector("#fileKey").value.trim());
+  const productName = document.querySelector("#productName").value.trim() || "web-app";
+
+  if (!token || !fileKey) {
+    showNotice("Add a Figma access token and file key before connecting.", true);
+    return;
+  }
+
+  setStatus("Connecting to Figma", "Reading file metadata and variables", "");
+  showNotice("Connecting to your Figma file...");
+
+  try {
+    const file = await figmaApi("inspect", { token, fileKey });
+    let tokenPayload = { tokens: [] };
+    try {
+      tokenPayload = await figmaApi("tokens", { token, fileKey });
+    } catch (error) {
+      showNotice(`File connected. Variables were not returned by Figma: ${error.message}`, true);
+    }
+
+    state.token = token;
+    state.fileKey = fileKey;
+    state.productName = productName;
+    state.file = file;
+    state.components = file.components || [];
+    state.tokens = tokenPayload.tokens || [];
+    state.component = state.components[0] || null;
+    state.componentSpec = null;
+
+    renderConnectedState();
+    setStatus("Live Figma file connected", file.fileName || fileKey, "ok");
+    showNotice("Connected. Your components and variables are now loaded from Figma.");
+    if (state.component) {
+      await setComponent(state.component.id);
+    } else {
+      showPanel("workspace");
+    }
+  } catch (error) {
+    setStatus("Figma connection failed", error.message, "bad");
+    showNotice(error.message, true);
+  }
+}
+
+function forgetConnection() {
+  state.token = "";
+  state.fileKey = "";
+  state.file = null;
+  state.tokens = [];
+  state.components = [];
+  state.component = null;
+  state.componentSpec = null;
+  document.querySelector("#figmaToken").value = "";
+  document.querySelector("#fileKey").value = "";
+  renderEmptyState();
+  showPanel("connect");
+  setStatus("No Figma file connected", "Connect a live file to begin", "");
+  showNotice("Credentials cleared from this browser session.");
+}
+
+async function figmaApi(action, payload) {
+  const response = await fetch("/api/figma", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action, ...payload })
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(result.error || `Request failed with ${response.status}`);
+  }
+  return result;
+}
+
+function renderEmptyState() {
+  document.querySelector("#componentCount").textContent = "--";
+  document.querySelector("#tokenCount").textContent = "--";
+  latestScore.textContent = "--";
+  document.querySelector("#currentFileName").textContent = "Waiting for Figma";
+  document.querySelector("#currentComponentName").textContent = "None selected";
+  document.querySelector("#currentScoreLabel").textContent = "Not scored yet";
+  componentSelect.innerHTML = '<option value="">Connect a Figma file first</option>';
+  generatedCode.textContent = "Connect a Figma file to generate code from a real component.";
+  codeSample.value = "";
+  document.querySelector("#componentList").innerHTML = emptyCard("Connect a Figma file to load its component inventory.");
+  document.querySelector("#componentPreview").innerHTML = emptyInline("No live component selected.");
+  document.querySelector("#componentDetailPreview").innerHTML = emptyInline("No live component selected.");
+  document.querySelector("#contractList").innerHTML = "";
+  document.querySelector("#componentDetails").innerHTML = "";
+  document.querySelector("#componentResource").textContent = "";
+  document.querySelector("#tokenGrid").innerHTML = emptyCard("Connect a Figma file with local variables to inspect design tokens.");
+  document.querySelector("#tokenJson").textContent = "";
+  document.querySelector("#issueList").innerHTML = "<li><strong>ready</strong>: Connect a file and paste implementation code to score it.</li>";
+  document.querySelector("#scoreValue").textContent = "--";
+  document.querySelector("#scoreBar").style.width = "0";
+  renderFileReadiness();
+  renderMcpPayload();
+}
+
+function renderConnectedState() {
+  document.querySelector("#componentCount").textContent = String(state.components.length);
+  document.querySelector("#tokenCount").textContent = String(state.tokens.length);
+  document.querySelector("#currentFileName").textContent = state.file?.fileName || state.fileKey;
+  componentSelect.innerHTML = state.components.length
+    ? state.components.map((component) => `<option value="${escapeHtml(component.id)}">${escapeHtml(component.name)}</option>`).join("")
+    : '<option value="">No components found</option>';
   renderComponentList();
   renderTokens();
-  setComponent(state.component.name);
-  codeSample.value = generateReactCode(state.component);
-  latestScore.textContent = "--";
-  document.querySelector("#currentScoreLabel").textContent = "Ready to score";
-  document.querySelector("#issueList").innerHTML = "<li><strong>ready</strong>: Run validation to score the current implementation.</li>";
-  renderReadiness({
-    mode: "demo dashboard",
-    products: [demo.product],
-    sseAuthConfigured: false,
-    webhookSecretConfigured: false
-  });
+  renderFileReadiness();
   renderClaudeConfig();
+  renderMcpPayload();
 }
 
 function showPanel(id) {
   steps.forEach((step) => step.classList.toggle("is-active", step.dataset.panel === id));
   panels.forEach((panel) => panel.classList.toggle("is-visible", panel.id === id));
   const titles = {
+    connect: "Connect Figma",
     workspace: "Workspace",
     components: "Components",
     tokens: "Tokens",
     generate: "Generate code",
     validate: "Validate code",
-    connect: "Connect live Figma"
+    agent: "Agent setup"
   };
   document.querySelector("#panelTitle").textContent = titles[id] || "Workspace";
 }
 
-function setComponent(name) {
-  state.component = demo.components.find((component) => component.name === name) || demo.components[0];
-  componentSelect.value = state.component.name;
-  document.querySelector("#currentComponentName").textContent = state.component.name;
+async function setComponent(id) {
+  const component = state.components.find((item) => item.id === id) || state.components[0] || null;
+  state.component = component;
+  state.componentSpec = null;
+
+  if (!component) {
+    renderEmptyState();
+    return;
+  }
+
+  componentSelect.value = component.id;
+  document.querySelector("#currentComponentName").textContent = component.name;
   renderComponentList();
-  renderComponentPreview("#componentPreview", state.component);
-  renderComponentPreview("#componentDetailPreview", state.component);
-  renderContract("#contractList", state.component);
-  renderContract("#componentDetails", state.component);
-  document.querySelector("#componentDetailTitle").textContent = state.component.name;
-  document.querySelector("#componentResource").textContent = JSON.stringify(componentResource(state.component), null, 2);
+  renderComponentPreview("#componentPreview", component);
+  renderComponentPreview("#componentDetailPreview", component);
+  renderContract("#contractList", component);
+  renderContract("#componentDetails", component);
+  document.querySelector("#componentDetailTitle").textContent = component.name;
+  document.querySelector("#componentResource").textContent = JSON.stringify(componentResource(component), null, 2);
   renderGeneratedCode();
   renderMcpPayload();
+
+  if (state.token && state.fileKey) {
+    try {
+      const result = await figmaApi("component", { token: state.token, fileKey: state.fileKey, nodeId: component.id });
+      state.componentSpec = result.component;
+      renderContract("#contractList", component);
+      renderContract("#componentDetails", component);
+      document.querySelector("#componentResource").textContent = JSON.stringify(componentResource(component), null, 2);
+      renderGeneratedCode();
+    } catch (error) {
+      showNotice(`Component metadata was partially loaded: ${error.message}`, true);
+    }
+  }
 }
 
 function renderComponentList() {
-  document.querySelector("#componentList").innerHTML = demo.components.map((component) => (
-    `<button class="component-card ${component.name === state.component.name ? "is-selected" : ""}" data-component="${component.name}">
-      <strong>${component.name}</strong>
-      <small>${component.description}</small>
+  if (!state.components.length) {
+    document.querySelector("#componentList").innerHTML = emptyCard("No components were found in this Figma file.");
+    return;
+  }
+
+  document.querySelector("#componentList").innerHTML = state.components.map((component) => (
+    `<button class="component-card ${component.id === state.component?.id ? "is-selected" : ""}" data-component="${escapeHtml(component.id)}">
+      <strong>${escapeHtml(component.name)}</strong>
+      <small>${escapeHtml(component.description || component.id)}</small>
     </button>`
   )).join("");
   document.querySelectorAll("[data-component]").forEach((button) => {
@@ -191,24 +251,26 @@ function renderComponentList() {
 }
 
 function renderComponentPreview(target, component) {
-  const html = {
-    Button: '<button class="preview-button">Save changes</button>',
-    ProfileCard: '<article class="preview-card"><div class="preview-avatar"></div><strong>Alex Morgan</strong><span>Design Systems Lead</span></article>',
-    ToggleRow: '<div class="preview-toggle"><div><strong>Email alerts</strong><br><span>Product and security updates</span></div><span class="switch"></span></div>',
-    EmptyState: '<div class="preview-empty"><strong>No components selected</strong><span>Choose a component to generate code.</span><button class="preview-button">Browse library</button></div>'
-  };
-  document.querySelector(target).innerHTML = html[component.name] || html.Button;
+  const image = component.thumbnailUrl
+    ? `<img class="figma-thumb" src="${escapeHtml(component.thumbnailUrl)}" alt="${escapeHtml(component.name)} preview">`
+    : `<div class="live-node"><strong>${escapeHtml(component.name)}</strong><span>${escapeHtml(component.id)}</span></div>`;
+  document.querySelector(target).innerHTML = image;
 }
 
 function renderContract(target, component) {
+  const spec = state.componentSpec;
+  const props = spec?.props?.length
+    ? spec.props.map((prop) => `${prop.name}${prop.variantOptions?.length ? ` (${prop.variantOptions.join(", ")})` : ""}`).join(", ")
+    : "No component properties returned";
   const rows = [
-    ["Resource", component.resource],
-    ["Variants", component.variants.join(", ")],
-    ["Props", component.props.join(", ")],
-    ["Spacing", component.spacing],
-    ["Radius", component.radius],
-    ["A11y", component.aria],
-    ["Responsive", component.responsive]
+    ["Figma node", component.id],
+    ["Description", component.description || "No description in Figma"],
+    ["Component set", component.componentSetId || "Not grouped"],
+    ["Layout", spec?.layoutMode || "Load returned no auto-layout mode"],
+    ["Size", spec?.size?.width ? `${Math.round(spec.size.width)} x ${Math.round(spec.size.height)}px` : "Not available"],
+    ["Spacing", spec?.itemSpacing != null ? `${spec.itemSpacing}px gap` : "Not available"],
+    ["Padding", paddingLabel(spec?.padding)],
+    ["Props", props]
   ];
   document.querySelector(target).innerHTML = rows.map(([key, value]) => (
     `<div><dt>${key}</dt><dd>${escapeHtml(value)}</dd></div>`
@@ -216,27 +278,34 @@ function renderContract(target, component) {
 }
 
 function renderTokens() {
-  const sections = [
-    ["Color", demo.tokens.color],
-    ["Spacing", demo.tokens.spacing],
-    ["Typography", demo.tokens.typography],
-    ["Radius", demo.tokens.radius]
-  ];
-  document.querySelector("#tokenGrid").innerHTML = sections.map(([title, tokens]) => (
+  if (!state.tokens.length) {
+    document.querySelector("#tokenGrid").innerHTML = emptyCard("No local variables were returned. Check Figma plan, file permissions, and Variables API access.");
+    document.querySelector("#tokenJson").textContent = JSON.stringify({ tokens: [] }, null, 2);
+    return;
+  }
+
+  const groups = groupBy(state.tokens, "collection");
+  document.querySelector("#tokenGrid").innerHTML = Object.entries(groups).map(([collection, tokens]) => (
     `<article class="token-card">
-      <h4>${title}</h4>
-      ${Object.entries(tokens).map(([name, token]) => tokenRow(name, token)).join("")}
+      <h4>${escapeHtml(collection)}</h4>
+      ${tokens.slice(0, 16).map(tokenRow).join("")}
+      ${tokens.length > 16 ? `<small>${tokens.length - 16} more tokens in this collection</small>` : ""}
     </article>`
   )).join("");
   document.querySelector("#tokenJson").textContent = JSON.stringify(toStyleDictionary(), null, 2);
 }
 
-function tokenRow(name, token) {
-  const swatch = token.value.startsWith("#") ? `<span class="swatch" style="background:${token.value}"></span>` : "";
-  return `<div class="swatch-row">${swatch}<div><strong>${name}</strong><br><small>${token.css}</small></div></div>`;
+function tokenRow(token) {
+  const swatch = /^#|^rgb/.test(token.cssValue || "") ? `<span class="swatch" style="background:${escapeHtml(token.cssValue)}"></span>` : "";
+  return `<div class="swatch-row">${swatch}<div><strong>${escapeHtml(token.name)}</strong><br><small>var(${escapeHtml(token.cssName)}) = ${escapeHtml(token.cssValue)}</small></div></div>`;
 }
 
 function renderGeneratedCode() {
+  if (!state.component) {
+    generatedCode.textContent = "Connect a Figma file and select a component first.";
+    return;
+  }
+
   const code = state.framework === "react"
     ? generateReactCode(state.component)
     : state.framework === "vue"
@@ -246,28 +315,30 @@ function renderGeneratedCode() {
 }
 
 function generateReactCode(component) {
-  const name = component.name;
-  const props = component.props.map((prop) => `${prop}?: string`).join(";\n  ");
+  const name = componentName(component.name);
+  const props = [
+    ...propNames().map((prop) => `${prop}?: string | boolean`),
+    "children?: React.ReactNode"
+  ].join(";\n  ");
   return `import { ${name} as Base${name} } from "${teamPackage.value || "@company/ui"}";
 
 type ${name}Props = {
   ${props};
-  children?: React.ReactNode;
 };
 
 export function ${name}({ children, ...props }: ${name}Props) {
   return (
     <Base${name}
       {...props}
-      data-figma-resource="${component.resource}"
+      data-figma-node="${component.id}"
       style={{
-        color: "var(--ds-color-ink)",
-        background: "var(--ds-color-surface)",
-        padding: "${component.spacing}",
-        borderRadius: "${component.radius}",
+        color: "var(${tokenName("color")})",
+        background: "var(${tokenName("surface")})",
+        padding: "var(${tokenName("spacing")})",
+        borderRadius: "var(${tokenName("radius")})",
         maxWidth: "100%"
       }}
-      aria-label={typeof children === "string" ? children : "${name}"}
+      aria-label={typeof children === "string" ? children : "${component.name}"}
     >
       {children}
     </Base${name}>
@@ -276,57 +347,53 @@ export function ${name}({ children, ...props }: ${name}Props) {
 }
 
 function generateVueCode(component) {
+  const name = componentName(component.name);
   return `<script setup lang="ts">
-import { ${component.name} as Base${component.name} } from "${teamPackage.value || "@company/ui"}";
+import { ${name} as Base${name} } from "${teamPackage.value || "@company/ui"}";
 
 defineProps<{
-  ${component.props.map((prop) => `${prop}?: string`).join(";\n  ")}
+  ${propNames().map((prop) => `${prop}?: string | boolean`).join(";\n  ")}
 }>();
 </script>
 
 <template>
-  <Base${component.name}
-    data-figma-resource="${component.resource}"
+  <Base${name}
+    data-figma-node="${component.id}"
     aria-label="${component.name}"
     :style="{
-      color: 'var(--ds-color-ink)',
-      background: 'var(--ds-color-surface)',
-      padding: '${component.spacing}',
-      borderRadius: '${component.radius}',
+      color: 'var(${tokenName("color")})',
+      background: 'var(${tokenName("surface")})',
+      padding: 'var(${tokenName("spacing")})',
+      borderRadius: 'var(${tokenName("radius")})',
       maxWidth: '100%'
     }"
   >
     <slot />
-  </Base${component.name}>
+  </Base${name}>
 </template>`;
 }
 
 function generateSvelteCode(component) {
+  const name = componentName(component.name);
   return `<script lang="ts">
-  import { ${component.name} as Base${component.name} } from "${teamPackage.value || "@company/ui"}";
-  ${component.props.map((prop) => `export let ${prop}: string | undefined = undefined;`).join("\n  ")}
+  import { ${name} as Base${name} } from "${teamPackage.value || "@company/ui"}";
+  ${propNames().map((prop) => `export let ${prop}: string | boolean | undefined = undefined;`).join("\n  ")}
 </script>
 
-<Base${component.name}
-  data-figma-resource="${component.resource}"
+<Base${name}
+  data-figma-node="${component.id}"
   aria-label="${component.name}"
-  style="color: var(--ds-color-ink); background: var(--ds-color-surface); padding: ${component.spacing}; border-radius: ${component.radius}; max-width: 100%;"
+  style="color: var(${tokenName("color")}); background: var(${tokenName("surface")}); padding: var(${tokenName("spacing")}); border-radius: var(${tokenName("radius")}); max-width: 100%;"
 >
   <slot />
-</Base${component.name}>`;
-}
-
-function badSampleFor(component) {
-  return `export function ${component.name}() {
-  return (
-    <div style={{ color: "#ffffff", padding: "13px", borderRadius: "22px" }}>
-      ${component.name}
-    </div>
-  );
-}`;
+</Base${name}>`;
 }
 
 function runValidation() {
+  if (!state.component) {
+    showNotice("Connect a Figma file and select a component before validating code.", true);
+    return;
+  }
   const result = validateImplementation(codeSample.value, state.component);
   state.latestScore = result.score;
   latestScore.textContent = String(result.score);
@@ -337,35 +404,49 @@ function runValidation() {
   scoreBar.style.background = result.score >= 90 ? "var(--ok)" : result.score >= 70 ? "var(--warn)" : "var(--bad)";
   document.querySelector("#issueList").innerHTML = result.issues.length
     ? result.issues.map((issue) => `<li><strong>${issue.severity}</strong>: ${escapeHtml(issue.message)}</li>`).join("")
-    : "<li><strong>pass</strong>: Implementation follows the demo design contract.</li>";
+    : "<li><strong>pass</strong>: Implementation follows the connected Figma design contract.</li>";
 }
 
 function validateImplementation(code, component) {
   const issues = [];
-  const cssVars = Object.values(demo.tokens).flatMap((group) => Object.values(group).map((token) => token.css));
-  const rawColors = code.match(/#[0-9a-fA-F]{3,8}/g) || [];
+  const rawColors = code.match(/#[0-9a-fA-F]{3,8}|rgba?\([^)]*\)/g) || [];
   const pxValues = code.match(/\b\d+(?:\.\d+)?px\b/g) || [];
-  const tokenValues = new Set(Object.values(demo.tokens).flatMap((group) => Object.values(group).map((token) => token.value)));
+  const tokenCssNames = new Set(state.tokens.map((token) => token.cssName));
+  const tokenCssValues = new Set(state.tokens.map((token) => token.cssValue).filter(Boolean));
+  const codeTokenRefs = [...code.matchAll(/var\((--[a-zA-Z0-9-_]+)\)/g)].map((match) => match[1]);
 
   rawColors.forEach((color) => {
-    issues.push({ severity: "error", message: `Raw color ${color} should use a design token.` });
+    issues.push({ severity: "error", message: `Raw color ${color} should reference a Figma variable token.` });
   });
-  pxValues.filter((value) => !tokenValues.has(value)).forEach((value) => {
-    issues.push({ severity: "warning", message: `${value} is outside the spacing, radius, and type scale.` });
+
+  pxValues.filter((value) => !tokenCssValues.has(value)).forEach((value) => {
+    issues.push({ severity: "warning", message: `${value} is not in the connected spacing, radius, or type scale.` });
   });
-  if (!cssVars.some((token) => code.includes(token))) {
-    issues.push({ severity: "warning", message: "No design token references found." });
+
+  if (state.tokens.length && !codeTokenRefs.some((token) => tokenCssNames.has(token))) {
+    issues.push({ severity: "warning", message: "No connected Figma token references were found." });
   }
+
+  codeTokenRefs.filter((token) => state.tokens.length && !tokenCssNames.has(token)).forEach((token) => {
+    issues.push({ severity: "info", message: `${token} is not present in the connected Figma variables.` });
+  });
+
   if (!/aria-|role=|<button|<Base/.test(code)) {
     issues.push({ severity: "warning", message: "No native semantic element or ARIA attribute found." });
   }
-  component.props.forEach((prop) => {
+
+  propNames().forEach((prop) => {
     if (!code.includes(prop)) {
-      issues.push({ severity: "info", message: `Prop '${prop}' from the component spec is not represented.` });
+      issues.push({ severity: "info", message: `Prop '${prop}' from the Figma component metadata is not represented.` });
     }
   });
+
   if (!/maxWidth|max-width|width:\s*100%|grid|flex|@media/.test(code)) {
     issues.push({ severity: "info", message: "No responsive layout hint found." });
+  }
+
+  if (!code.includes(component.id)) {
+    issues.push({ severity: "info", message: "Generated traceability to the Figma node is missing." });
   }
 
   const penalty = issues.reduce((sum, issue) => sum + (issue.severity === "error" ? 25 : issue.severity === "warning" ? 12 : 4), 0);
@@ -393,10 +474,22 @@ async function checkRuntime() {
   }
 }
 
+function renderFileReadiness() {
+  const items = [
+    ["Connection", state.file ? "live Figma file" : "not connected"],
+    ["File", state.file?.fileName || "waiting"],
+    ["Components", state.components.length ? String(state.components.length) : "waiting"],
+    ["Variables", state.tokens.length ? String(state.tokens.length) : "waiting"]
+  ];
+  document.querySelector("#fileReadiness").innerHTML = items.map(([label, value]) => (
+    `<div class="ready-item"><span>${label}</span><strong>${escapeHtml(value)}</strong></div>`
+  )).join("");
+}
+
 function renderReadiness(readiness) {
   const items = [
-    ["Mode", readiness.mode || "demo dashboard"],
-    ["Products", (readiness.products || [demo.product]).join(", ")],
+    ["Mode", readiness.mode || "unknown"],
+    ["Products", (readiness.products || []).join(", ") || state.productName],
     ["SSE auth", readiness.sseAuthConfigured ? "configured" : "not configured"],
     ["Webhook secret", readiness.webhookSecretConfigured ? "configured" : "not configured"]
   ];
@@ -414,8 +507,9 @@ function renderClaudeConfig() {
         env: {
           FIGMA_MODE: "production",
           FIGMA_ACCESS_TOKEN: "figd_...",
-          FIGMA_FILES_CONFIG: "/absolute/path/to/figma.files.json",
-          FIGMA_PRODUCT: "web-app"
+          FIGMA_FILE_KEY: state.fileKey || "your_file_key",
+          FIGMA_PRODUCT: state.productName,
+          CODEGEN_TEAM_PACKAGE: teamPackage.value || "@company/ui"
         }
       }
     }
@@ -432,9 +526,9 @@ function renderMcpPayload() {
     params: {
       name: "extract_component_code",
       arguments: {
-        component_name: state.component.name,
+        component_name: state.component?.name || "Select a connected Figma component",
         framework: state.framework,
-        product: "web-app"
+        product: state.productName
       }
     }
   };
@@ -443,25 +537,98 @@ function renderMcpPayload() {
 
 function componentResource(component) {
   return {
-    uri: component.resource,
+    uri: `figma://products/${state.productName}/components/${component.name}`,
+    fileKey: state.fileKey,
+    nodeId: component.id,
     name: component.name,
-    variants: component.variants,
-    props: component.props,
-    spacing: component.spacing,
-    radius: component.radius,
-    accessibility: component.aria,
-    responsive: component.responsive
+    description: component.description,
+    componentSetId: component.componentSetId,
+    figmaSpec: state.componentSpec
   };
 }
 
 function toStyleDictionary() {
-  return Object.fromEntries(Object.entries(demo.tokens).map(([family, tokens]) => [
-    family,
-    Object.fromEntries(Object.entries(tokens).map(([name, token]) => [
-      name,
-      { value: token.value, token: token.css }
-    ]))
-  ]));
+  const result = {};
+  state.tokens.forEach((token) => {
+    const path = token.name.split("/").map((part) => part.trim()).filter(Boolean);
+    const family = token.type?.toLowerCase() || "token";
+    const keyPath = [family, ...path];
+    let cursor = result;
+    keyPath.forEach((key, index) => {
+      if (index === keyPath.length - 1) {
+        cursor[key] = { value: token.cssValue, type: token.type, css: `var(${token.cssName})` };
+      } else {
+        cursor[key] ||= {};
+        cursor = cursor[key];
+      }
+    });
+  });
+  return result;
+}
+
+function propNames() {
+  const props = state.componentSpec?.props?.map((prop) => safeIdentifier(prop.name)) || [];
+  return [...new Set(props.filter(Boolean))].slice(0, 8);
+}
+
+function tokenName(kind) {
+  const lower = kind.toLowerCase();
+  const byName = state.tokens.find((token) => token.name.toLowerCase().includes(lower));
+  const byType = state.tokens.find((token) => {
+    if (lower === "color" || lower === "surface") return token.type === "COLOR";
+    if (lower === "spacing" || lower === "radius") return token.type === "FLOAT";
+    return false;
+  });
+  return (byName || byType)?.cssName || `--figma-${lower}`;
+}
+
+function componentName(name) {
+  const words = String(name)
+    .replace(/[^a-zA-Z0-9]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  return words.map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join("") || "FigmaComponent";
+}
+
+function safeIdentifier(name) {
+  const camel = String(name)
+    .replace(/[^a-zA-Z0-9]+(.)/g, (_, char) => char.toUpperCase())
+    .replace(/^[^a-zA-Z_$]+/, "");
+  return camel.charAt(0).toLowerCase() + camel.slice(1);
+}
+
+function paddingLabel(padding) {
+  if (!padding || Object.values(padding).every((value) => value == null)) return "Not available";
+  return `${padding.top ?? 0}px ${padding.right ?? 0}px ${padding.bottom ?? 0}px ${padding.left ?? 0}px`;
+}
+
+function groupBy(items, key) {
+  return items.reduce((groups, item) => {
+    const value = item[key] || "Other";
+    groups[value] ||= [];
+    groups[value].push(item);
+    return groups;
+  }, {});
+}
+
+function normalizeFileKey(input) {
+  const match = input.match(/figma\.com\/(?:file|design)\/([a-zA-Z0-9]+)/);
+  return match ? match[1] : input;
+}
+
+function showNotice(message, isError = false) {
+  const notice = document.querySelector("#connectionNotice");
+  notice.textContent = message;
+  notice.classList.toggle("error", isError);
+}
+
+function emptyCard(message) {
+  return `<div class="empty-card">${escapeHtml(message)}</div>`;
+}
+
+function emptyInline(message) {
+  return `<div class="live-node"><strong>${escapeHtml(message)}</strong><span>Connect Figma to populate this area.</span></div>`;
 }
 
 async function copyText(text, selector) {
@@ -474,10 +641,6 @@ async function copyText(text, selector) {
   }, 1200);
 }
 
-function labelForFramework(framework) {
-  return framework.charAt(0).toUpperCase() + framework.slice(1);
-}
-
 function setStatus(label, detail, tone) {
   statusLabel.textContent = label;
   statusDetail.textContent = detail;
@@ -485,7 +648,7 @@ function setStatus(label, detail, tone) {
 }
 
 function escapeHtml(value) {
-  return String(value)
+  return String(value ?? "")
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
