@@ -4,8 +4,11 @@
       "command": "npx",
       "args": ["tsx", "/path/to/figma-mcp-bridge/src/mcp-server/index.ts"],
       "env": {
+        "FIGMA_MODE": "production",
         "FIGMA_ACCESS_TOKEN": "your_figma_token",
-        "FIGMA_FILE_KEY": "your_file_key"
+        "FIGMA_FILES_CONFIG": "/path/to/figma-mcp-bridge/figma.files.json",
+        "FIGMA_PRODUCT": "web-app",
+        "CODEGEN_CONFIG_PATH": "/path/to/figma-mcp-bridge/codegen.config.json"
       }
     }
   }

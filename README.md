@@ -14,26 +14,36 @@ flowchart LR
   Pipeline --> App["Production app"]
 ```
 
-## Quick Start
+## Production Quick Start
 
 ```bash
 npm install
-cp .env.example .env
+cp figma.files.example.json figma.files.json
+cp codegen.config.example.json codegen.config.json
 npm run typecheck
 npm test
 ```
 
-By default `.env.example` starts in `FIGMA_MODE=demo`, which uses realistic mock Figma data for local onboarding and CI. For live users, set production mode and configure one or more real Figma files:
+Set production mode and configure one or more real Figma files:
 
 ```bash
-cp figma.files.example.json figma.files.json
 FIGMA_MODE=production
 FIGMA_ACCESS_TOKEN=figd_...
 FIGMA_FILES_CONFIG=figma.files.json
 FIGMA_PRODUCT=web-app
 ```
 
-`figma.files.json` supports multiple named products/files. Existing single-file setups can still use `FIGMA_FILE_KEY`.
+`figma.files.json` supports multiple named products/files. Existing single-file setups can still use `FIGMA_FILE_KEY`. For local onboarding and CI, set `FIGMA_MODE=demo` or copy `.env.example`; demo mode uses realistic mock Figma data and never calls the Figma API.
+
+## Connect To Claude Code In 3 Commands
+
+```bash
+npm install
+cp figma.files.example.json figma.files.json
+claude mcp add figma-design-system --env FIGMA_MODE=production --env FIGMA_ACCESS_TOKEN=figd_... --env FIGMA_FILES_CONFIG="$PWD/figma.files.json" -- npx tsx "$PWD/src/mcp-server/index.ts"
+```
+
+If your Claude Code install uses JSON config instead of the CLI helper, use [examples/claude-code-config.json](examples/claude-code-config.json) and replace `/path/to/figma-mcp-bridge` with this repo path.
 
 Run MCP over stdio:
 
@@ -145,6 +155,33 @@ The scoring mechanism starts at 100 and applies penalties:
 - `info`: -4
 
 The validator parses TSX with the TypeScript compiler API, extracts string literals and JSX attributes, then cross-checks CSS-like literals such as colors, `px` values, and CSS variables. It also checks for native button semantics or ARIA/role attributes.
+
+Passing shape:
+
+```json
+{
+  "score": 96,
+  "issues": [],
+  "suggestions": []
+}
+```
+
+Failing shape:
+
+```json
+{
+  "score": 11,
+  "issues": [
+    {
+      "severity": "error",
+      "path": "Button.tokens.color",
+      "message": "Raw color literal #FFFFFF should be replaced with a design token reference.",
+      "actual": "#FFFFFF"
+    }
+  ],
+  "suggestions": ["Address Button.tokens.color: Raw color literal #FFFFFF should be replaced with a design token reference."]
+}
+```
 
 ## End-To-End Workflow
 
