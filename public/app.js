@@ -101,8 +101,9 @@ async function connectFile() {
     showNotice("Connected. Your components and variables are now loaded from Figma.");
     if (state.component) {
       await setComponent(state.component.id);
+      showPanel("components");
     } else {
-      showPanel("workspace");
+      showPanel("components");
     }
   } catch (error) {
     setStatus("Figma connection failed", error.message, "bad");
@@ -187,17 +188,21 @@ function renderConnectedState() {
 
 function showPanel(id) {
   steps.forEach((step) => step.classList.toggle("is-active", step.dataset.panel === id));
+  panels.forEach((panel) => {
+    const active = panel.id === id;
+    panel.classList.toggle("is-visible", active);
+    panel.setAttribute("aria-hidden", active ? "false" : "true");
+  });
   const titles = {
-    connect: "Connect Figma",
-    workspace: "Workspace",
-    components: "Components",
-    tokens: "Tokens",
-    generate: "Generate code",
-    validate: "Validate code",
-    agent: "Agent setup"
+    connect: "Source",
+    workspace: "Overview",
+    components: "Library",
+    generate: "Build",
+    validate: "Review",
+    agent: "Agent"
   };
   document.querySelector("#panelTitle").textContent = titles[id] || "Workspace";
-  document.querySelector(`#${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  document.querySelector(".workspace")?.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 async function setComponent(id) {

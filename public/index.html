@@ -13,10 +13,17 @@
           <div class="brand-mark">FM</div>
           <div>
             <h1>Figma MCP Bridge</h1>
-            <p>Live Figma to production code</p>
+            <p>Design system operations</p>
           </div>
         </div>
-        <p class="sidebar-copy">Connect one Figma file, discover components with AI assistance, generate code, compare visuals, and validate implementation drift from a single dashboard.</p>
+
+        <nav class="steps" aria-label="Workspace navigation">
+          <button class="step is-active" data-panel="connect">Source</button>
+          <button class="step" data-panel="components">Library</button>
+          <button class="step" data-panel="generate">Build</button>
+          <button class="step" data-panel="validate">Review</button>
+          <button class="step" data-panel="agent">Agent</button>
+        </nav>
 
         <section class="runtime-card">
           <span class="dot" id="statusDot"></span>
@@ -31,7 +38,8 @@
         <header class="topbar">
           <div>
             <p class="eyebrow">Design System Control Center</p>
-            <h2 id="panelTitle">Live Figma Dashboard</h2>
+            <h2 id="panelTitle">Source</h2>
+            <p class="topbar-copy">Connect a live Figma file, inspect the library, generate implementation code, and validate drift.</p>
           </div>
           <div class="top-actions">
             <a href="https://github.com/skandvj/figma-mcp-bridge" target="_blank" rel="noreferrer">GitHub</a>
@@ -83,7 +91,7 @@
           <div class="readiness" id="fileReadiness"></div>
         </section>
 
-        <section class="panel" id="workspace">
+        <section class="panel" id="workspace" aria-hidden="true">
           <div class="panel-copy">
             <h3>Live workspace</h3>
             <p>Once connected, this page becomes a working design-system bridge: browse real components, inspect variables, generate code, and score implementation drift.</p>
@@ -119,8 +127,8 @@
 
         <section class="panel" id="components">
           <div class="panel-copy">
-            <h3>Component inventory</h3>
-            <p>Components are loaded from the connected Figma file and exposed in the same structure an MCP client consumes.</p>
+            <h3>Library</h3>
+            <p>Published components, local component sets, and AI-discovered component-like frames from the connected file.</p>
           </div>
           <div class="component-layout">
             <div class="component-list" id="componentList"></div>
@@ -132,21 +140,17 @@
               <pre class="output compact-output" id="componentResource"></pre>
             </div>
           </div>
-        </section>
-
-        <section class="panel" id="tokens">
-          <div class="panel-copy">
-            <h3>Design tokens</h3>
-            <p>Local Figma variables are converted to CSS custom properties and Style Dictionary-shaped JSON for implementation.</p>
+          <div class="surface">
+            <h4>Design tokens</h4>
+            <div class="token-grid" id="tokenGrid"></div>
+            <pre class="output compact-output" id="tokenJson"></pre>
           </div>
-          <div class="token-grid" id="tokenGrid"></div>
-          <pre class="output" id="tokenJson"></pre>
         </section>
 
         <section class="panel" id="generate">
           <div class="panel-copy">
-            <h3>Generate production scaffold</h3>
-            <p>Generated code uses your selected component metadata, team package import, token references, typed props, and accessibility attributes.</p>
+            <h3>Build</h3>
+            <p>Generate implementation scaffolds from the selected component and compare the output to the Figma export.</p>
           </div>
           <div class="form-grid">
             <label>
@@ -187,8 +191,8 @@
 
         <section class="panel" id="validate">
           <div class="panel-copy">
-            <h3>Score implementation</h3>
-            <p>Validation checks raw colors, token references, spacing scale, component props, accessibility, and responsive layout hints against your loaded Figma data.</p>
+            <h3>Review</h3>
+            <p>Score implementation code against the connected Figma component, token scale, props, and accessibility signals.</p>
           </div>
           <div class="toolbar">
             <button class="secondary" id="useGeneratedCode">Use generated code</button>
