@@ -105,10 +105,16 @@ export function validateImplementation(
   tokens: StyleDictionaryTokens
 ): { score: number; issues: ValidationIssue[]; suggestions: string[] } {
   const issues: ValidationIssue[] = [];
+  const flattenedTokens = flattenTokens(tokens);
   const values = flattenTokenValues(tokens);
   const analysis = analyzeImplementation(code);
   const codeValues = new Set(analysis.values);
-  const spacingValues = Object.values(spec.spacing).map(String);
+  const spacingValues = [...new Set(Object.values(spec.spacing).map(String))];
+  const colorValues = tokenValuesByType(flattenedTokens, "color");
+  const spacingScale = new Set(tokenValuesByType(flattenedTokens, "spacing"));
+  const radiusScale = new Set(tokenValuesByType(flattenedTokens, "borderRadius"));
+  const typographyScale = new Set(tokenValuesByType(flattenedTokens, "typography"));
+  const codeText = code.toLowerCase();
 
   for (const spacing of spacingValues) {
     if (!code.includes(spacing) && !code.includes(cssVarNameForValue(tokens, spacing))) {
@@ -121,21 +127,71 @@ export function validateImplementation(
     }
   }
 
-  for (const tokenValue of values.slice(0, 20)) {
-    if (code.includes(tokenValue)) continue;
+  for (const actual of [...codeValues].filter((value) => /^#[0-9a-fA-F]{3,8}$/.test(value))) {
+    issues.push({
+      severity: "error",
+      path: `${spec.name}.tokens.color`,
+      message: `Raw color literal ${actual} should be replaced with a design token reference.`,
+      actual
+    });
+  }
+
+  for (const tokenValue of colorValues.slice(0, 12)) {
     const cssVariable = cssVarNameForValue(tokens, tokenValue);
     if (cssVariable && code.includes(cssVariable)) continue;
-    if (["#2563EB", "#1E4EBA"].includes(tokenValue)) {
-      const issue: ValidationIssue = {
-        severity: "info",
-        path: `${spec.name}.tokens`,
-        message: `Token value ${tokenValue} is available but not referenced.`,
-        expected: tokenValue
-      };
-      const actual = [...codeValues].find((value) => value.startsWith("#"));
-      if (actual) issue.actual = actual;
+    if (code.includes(tokenValue)) continue;
+    issues.push({
+      severity: "info",
+      path: `${spec.name}.tokens.color`,
+      message: `Color token ${cssVariable || tokenValue} is available but not referenced.`,
+      expected: cssVariable || tokenValue
+    });
+  }
+
+  for (const pxValue of [...codeValues].filter((value) => /^\d+(?:\.\d+)?px$/.test(value))) {
+    const isKnownScaleValue = spacingScale.has(pxValue) || radiusScale.has(pxValue) || typographyScale.has(pxValue);
+    if (!isKnownScaleValue) {
       issues.push({
-        ...issue
+        severity: "warning",
+        path: `${spec.name}.tokens.scale`,
+        message: `Pixel value ${pxValue} is not part of the configured spacing, radius, or typography scale.`,
+        actual: pxValue
+      });
+    }
+  }
+
+  if (typographyScale.size > 0 && /font(size|family|weight)|line-height/.test(codeText)) {
+    const referencesTypographyToken = flattenedTokens
+      .filter((token) => token.type === "typography")
+      .some((token) => code.includes(cssVariableForPath(token.path, { allowedFrameworks: [...FRAMEWORKS], componentStrategy: "scaffold", tokenNaming: "css-var" })));
+    if (!referencesTypographyToken) {
+      issues.push({
+        severity: "warning",
+        path: `${spec.name}.tokens.typography`,
+        message: "Typography styles should reference typography tokens instead of hard-coded font values."
+      });
+    }
+  }
+
+  if (/border(-radius)?|radius/.test(codeText) && radiusScale.size > 0) {
+    const referencesRadiusToken = flattenedTokens
+      .filter((token) => token.type === "borderRadius")
+      .some((token) => code.includes(cssVariableForPath(token.path, { allowedFrameworks: [...FRAMEWORKS], componentStrategy: "scaffold", tokenNaming: "css-var" })));
+    if (!referencesRadiusToken) {
+      issues.push({
+        severity: "warning",
+        path: `${spec.name}.tokens.radius`,
+        message: "Border radius should reference radius tokens."
+      });
+    }
+  }
+
+  for (const propName of Object.keys(spec.props)) {
+    if (!code.includes(propName) && !analysis.attributes.includes(propName)) {
+      issues.push({
+        severity: "info",
+        path: `${spec.name}.props.${propName}`,
+        message: `Figma variant prop '${propName}' is not represented in the implementation.`
       });
     }
   }
@@ -145,6 +201,14 @@ export function validateImplementation(
       severity: "warning",
       path: `${spec.name}.accessibility`,
       message: "Implementation should expose native semantics or ARIA attributes."
+    });
+  }
+
+  if (!/@media|container|grid|flex|clamp\(|min\(|max\(|sm:|md:|lg:|width:\s*100%|max-width/.test(codeText)) {
+    issues.push({
+      severity: "info",
+      path: `${spec.name}.layout.responsive`,
+      message: "Implementation does not expose responsive or layout hints from the Figma spec."
     });
   }
 
@@ -265,12 +329,17 @@ function inferTokensUsed(spec: ComponentSpec, tokens: StyleDictionaryTokens, con
   return [...new Set(matched)].slice(0, 8);
 }
 
-function flattenTokens(tokens: StyleDictionaryTokens, prefix = ""): Array<{ path: string; value: string }> {
-  const entries: Array<{ path: string; value: string }> = [];
+function flattenTokens(tokens: StyleDictionaryTokens, prefix = ""): Array<{ path: string; value: unknown; type?: string }> {
+  const entries: Array<{ path: string; value: unknown; type?: string }> = [];
   for (const [key, value] of Object.entries(tokens)) {
     const path = prefix ? `${prefix}.${key}` : key;
     if (value && typeof value === "object" && "value" in value) {
-      entries.push({ path, value: String((value as { value: unknown }).value) });
+      const token = value as { value: unknown; type?: unknown; modes?: Record<string, unknown> };
+      const type = typeof token.type === "string" ? token.type : undefined;
+      entries.push(tokenEntry(path, token.value, type));
+      for (const [mode, modeValue] of Object.entries(token.modes ?? {})) {
+        entries.push(tokenEntry(`${path}.${mode}`, modeValue, type));
+      }
     } else if (value && typeof value === "object") {
       entries.push(...flattenTokens(value as StyleDictionaryTokens, path));
     }
@@ -278,13 +347,39 @@ function flattenTokens(tokens: StyleDictionaryTokens, prefix = ""): Array<{ path
   return entries;
 }
 
+function tokenEntry(path: string, value: unknown, type?: string): { path: string; value: unknown; type?: string } {
+  const entry: { path: string; value: unknown; type?: string } = { path, value };
+  if (type) entry.type = type;
+  return entry;
+}
+
 function flattenTokenValues(tokens: StyleDictionaryTokens): string[] {
-  return flattenTokens(tokens).map((token) => token.value);
+  return flattenTokens(tokens).flatMap((token) => primitiveTokenValues(token.value));
 }
 
 function cssVarNameForValue(tokens: StyleDictionaryTokens, value: string): string {
-  const token = flattenTokens(tokens).find((candidate) => candidate.value === value);
+  const token = flattenTokens(tokens).find((candidate) => primitiveTokenValues(candidate.value).includes(value));
   return token ? `--${token.path.replace(/\./g, "-")}` : "";
+}
+
+function tokenValuesByType(
+  tokens: Array<{ path: string; value: unknown; type?: string }>,
+  type: string
+): string[] {
+  return tokens
+    .filter((token) => token.type === type)
+    .flatMap((token) => primitiveTokenValues(token.value))
+    .map((value) => value.toUpperCase().startsWith("#") ? value.toUpperCase() : value);
+}
+
+function primitiveTokenValues(value: unknown): string[] {
+  if (value === undefined || value === null) return [];
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return [String(value)];
+  if (Array.isArray(value)) return value.flatMap((item) => primitiveTokenValues(item));
+  if (typeof value === "object") {
+    return Object.values(value as Record<string, unknown>).flatMap((item) => primitiveTokenValues(item));
+  }
+  return [];
 }
 
 function cssVariableForPath(path: string, config: CodegenConfig): string {

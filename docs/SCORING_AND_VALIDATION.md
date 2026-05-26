@@ -35,11 +35,17 @@ The validator uses TypeScript's compiler API to parse TSX/JSX-like code and extr
 
 ## Checks
 
-The current scorer checks:
+The scorer checks:
 
 - Figma spacing values are present directly or through matching CSS variables.
-- important color tokens are referenced directly or through CSS variables.
+- raw color literals are replaced with token references.
+- color tokens are referenced directly or through CSS variables.
+- arbitrary pixel values are part of the spacing, radius, or typography scale.
+- typography styles reference typography tokens.
+- border radius styles reference radius tokens.
+- Figma variant props appear in component props or JSX attributes.
 - code uses native `<button>` semantics, ARIA attributes, or role attributes.
+- responsive/layout hints exist through flex/grid, media/container queries, width constraints, or utility breakpoints.
 
 ## Penalties
 
@@ -64,6 +70,12 @@ Scores are clamped between 0 and 100.
       "path": "Button.spacing",
       "message": "Expected spacing value 8px from Figma spec was not found in implementation.",
       "expected": "8px"
+    },
+    {
+      "severity": "error",
+      "path": "Button.tokens.color",
+      "message": "Raw color literal #FFFFFF should be replaced with a design token reference.",
+      "actual": "#FFFFFF"
     }
   ],
   "suggestions": [

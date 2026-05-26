@@ -129,7 +129,14 @@ describe("MCP tools", () => {
 
       const validation = validateImplementation("<div style=\"color:#FFFFFF\">Label</div>", spec, tokens);
       expect(validation.score).toBeLessThan(80);
-      expect(validation.issues.map((issue) => issue.path)).toEqual(expect.arrayContaining(["Button.spacing", "Button.accessibility"]));
+      expect(validation.issues.map((issue) => issue.path)).toEqual(
+        expect.arrayContaining([
+          "Button.spacing",
+          "Button.accessibility",
+          "Button.tokens.color",
+          "Button.layout.responsive"
+        ])
+      );
     } finally {
       figma.close();
     }
