@@ -166,6 +166,12 @@ function renderEmptyState() {
   document.querySelector("#issueList").innerHTML = "<li><strong>ready</strong>: Connect a file and paste implementation code to score it.</li>";
   document.querySelector("#scoreValue").textContent = "--";
   document.querySelector("#scoreBar").style.width = "0";
+  renderScoreBreakdown({
+    score: null,
+    penalty: 0,
+    counts: { error: 0, warning: 0, info: 0 },
+    checks: []
+  });
   renderFileReadiness();
   renderMcpPayload();
 }
@@ -486,27 +492,50 @@ function runValidation() {
   const scoreBar = document.querySelector("#scoreBar");
   scoreBar.style.width = `${result.score}%`;
   scoreBar.style.background = result.score >= 90 ? "var(--ok)" : result.score >= 70 ? "var(--warn)" : "var(--bad)";
+  renderScoreBreakdown(result);
   document.querySelector("#issueList").innerHTML = result.issues.length
     ? result.issues.map((issue) => `<li><strong>${issue.severity}</strong>: ${escapeHtml(issue.message)}</li>`).join("")
     : "<li><strong>pass</strong>: Implementation follows the connected Figma design contract.</li>";
 }
 
+function renderScoreBreakdown(result) {
+  const scoreLabel = result.score == null ? "Not run" : `${result.score}/100`;
+  const rating = result.score == null ? "Waiting" : result.score >= 90 ? "Merge-ready" : result.score >= 70 ? "Needs cleanup" : "Needs redesign";
+  const rows = [
+    ["Result", rating],
+    ["Score", scoreLabel],
+    ["Penalty", result.score == null ? "--" : `-${result.penalty}`],
+    ["Errors", String(result.counts.error)],
+    ["Warnings", String(result.counts.warning)],
+    ["Info", String(result.counts.info)]
+  ];
+  document.querySelector("#scoreBreakdown").innerHTML = rows.map(([label, value]) => (
+    `<div><dt>${label}</dt><dd>${escapeHtml(value)}</dd></div>`
+  )).join("");
+}
+
 function validateImplementation(code, component) {
   const issues = [];
+  const checks = [];
   const rawColors = code.match(/#[0-9a-fA-F]{3,8}|rgba?\([^)]*\)/g) || [];
   const pxValues = code.match(/\b\d+(?:\.\d+)?px\b/g) || [];
   const tokenCssNames = new Set(state.tokens.map((token) => token.cssName));
   const tokenCssValues = new Set(state.tokens.map((token) => token.cssValue).filter(Boolean));
   const codeTokenRefs = [...code.matchAll(/var\((--[a-zA-Z0-9-_]+)\)/g)].map((match) => match[1]);
 
+  checks.push({ name: "Raw color usage", passed: rawColors.length === 0 });
   rawColors.forEach((color) => {
     issues.push({ severity: "error", message: `Raw color ${color} should reference a Figma variable token.` });
   });
 
-  pxValues.filter((value) => !tokenCssValues.has(value)).forEach((value) => {
+  const offScaleValues = pxValues.filter((value) => !tokenCssValues.has(value));
+  checks.push({ name: "Spacing/radius/type scale", passed: offScaleValues.length === 0 });
+  offScaleValues.forEach((value) => {
     issues.push({ severity: "warning", message: `${value} is not in the connected spacing, radius, or type scale.` });
   });
 
+  const hasKnownToken = codeTokenRefs.some((token) => tokenCssNames.has(token));
+  checks.push({ name: "Connected token references", passed: !state.tokens.length || hasKnownToken });
   if (state.tokens.length && !codeTokenRefs.some((token) => tokenCssNames.has(token))) {
     issues.push({ severity: "warning", message: "No connected Figma token references were found." });
   }
@@ -515,26 +544,39 @@ function validateImplementation(code, component) {
     issues.push({ severity: "info", message: `${token} is not present in the connected Figma variables.` });
   });
 
-  if (!/aria-|role=|<button|<Base/.test(code)) {
+  const hasAccessibilitySignal = /aria-|role=|<button|<Base/.test(code);
+  checks.push({ name: "Accessibility signal", passed: hasAccessibilitySignal });
+  if (!hasAccessibilitySignal) {
     issues.push({ severity: "warning", message: "No native semantic element or ARIA attribute found." });
   }
 
+  const missingProps = [];
   propNames().forEach((prop) => {
     if (!code.includes(prop)) {
+      missingProps.push(prop);
       issues.push({ severity: "info", message: `Prop '${prop}' from the Figma component metadata is not represented.` });
     }
   });
+  checks.push({ name: "Component props", passed: missingProps.length === 0 });
 
-  if (!/maxWidth|max-width|width:\s*100%|grid|flex|@media/.test(code)) {
+  const hasResponsiveSignal = /maxWidth|max-width|width:\s*100%|grid|flex|@media/.test(code);
+  checks.push({ name: "Responsive signal", passed: hasResponsiveSignal });
+  if (!hasResponsiveSignal) {
     issues.push({ severity: "info", message: "No responsive layout hint found." });
   }
 
-  if (!code.includes(component.id)) {
+  const hasNodeTrace = code.includes(component.id);
+  checks.push({ name: "Figma node traceability", passed: hasNodeTrace });
+  if (!hasNodeTrace) {
     issues.push({ severity: "info", message: "Generated traceability to the Figma node is missing." });
   }
 
   const penalty = issues.reduce((sum, issue) => sum + (issue.severity === "error" ? 25 : issue.severity === "warning" ? 12 : 4), 0);
-  return { score: Math.max(0, 100 - penalty), issues };
+  const counts = issues.reduce((acc, issue) => {
+    acc[issue.severity] += 1;
+    return acc;
+  }, { error: 0, warning: 0, info: 0 });
+  return { score: Math.max(0, 100 - penalty), penalty, counts, checks, issues };
 }
 
 async function checkRuntime() {

@@ -204,12 +204,24 @@
               <span>Score</span>
               <strong id="scoreValue">--</strong>
               <div class="score-track"><div id="scoreBar"></div></div>
+              <dl class="score-breakdown" id="scoreBreakdown"></dl>
             </section>
             <section class="surface">
               <h4>Issues</h4>
               <ul class="issue-list" id="issueList"></ul>
             </section>
           </div>
+          <section class="surface">
+            <h4>How scoring works</h4>
+            <div class="rubric-grid">
+              <div><strong>Token fidelity</strong><span>Flags raw hex/RGB colors and token variables that do not exist in the connected Figma file.</span></div>
+              <div><strong>Scale match</strong><span>Checks pixel values against Figma variable values for spacing, radius, and type scale.</span></div>
+              <div><strong>Component contract</strong><span>Checks whether Figma component props and node traceability are represented in the code.</span></div>
+              <div><strong>Accessibility</strong><span>Looks for native semantic elements, ARIA attributes, or role metadata.</span></div>
+              <div><strong>Responsive behavior</strong><span>Looks for width constraints, flex/grid, or media-query signals.</span></div>
+              <div><strong>Penalty model</strong><span>Error -25, warning -12, info -4. Scores 90+ are merge-ready, 70-89 need cleanup, below 70 needs redesign.</span></div>
+            </div>
+          </section>
         </section>
 
         <section class="panel" id="agent">
@@ -217,6 +229,25 @@
             <h3>Agent setup</h3>
             <p>Use this config to connect Claude Code, Codex, or another MCP-capable agent to the long-running MCP runtime for the same Figma file.</p>
           </div>
+          <section class="surface">
+            <h4>Step-by-step usage</h4>
+            <ol class="instruction-list">
+              <li><strong>Connect a live file:</strong> add your Figma token and file key in Source. Expect component counts, token counts, and AI discovery counts to populate.</li>
+              <li><strong>Pick a component:</strong> open Library and select a component. Expect a Figma export preview, metadata, props, and the reason it was discovered.</li>
+              <li><strong>Generate code:</strong> open Build, choose framework and team package. Expect tokenized React/Vue/Svelte scaffold code plus a visual generated simulation.</li>
+              <li><strong>Validate code:</strong> send generated code to Review or paste your implementation. Expect a score, penalties, and issue-level details.</li>
+              <li><strong>Use with an agent:</strong> copy the config below into Claude Code/Codex MCP settings, then ask the agent to read tokens and component resources before coding.</li>
+            </ol>
+          </section>
+          <section class="surface">
+            <h4>What to expect from the agent</h4>
+            <ul class="instruction-list">
+              <li>It should use Figma tokens instead of raw hex values and arbitrary spacing.</li>
+              <li>It should reference the selected component’s props, layout hints, and accessibility metadata.</li>
+              <li>It should call validation after generating code and fix drift before handing work back.</li>
+              <li>If a component is not published in Figma, AI discovery can still surface likely reusable frames from design-system pages.</li>
+            </ul>
+          </section>
           <div class="form-grid connect-grid">
             <label>
               MCP runtime URL

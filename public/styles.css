@@ -619,6 +619,8 @@ button {
 .score-panel {
   grid-column: span 1;
   box-shadow: none;
+  display: grid;
+  gap: 12px;
 }
 
 .validation-grid {
@@ -638,6 +640,31 @@ button {
   background: var(--bad);
 }
 
+.score-breakdown {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.score-breakdown div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 8px;
+}
+
+.score-breakdown dt {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.score-breakdown dd {
+  margin: 0;
+  font-weight: 900;
+}
+
 .issue-list {
   margin: 0;
   padding-left: 18px;
@@ -646,6 +673,41 @@ button {
 }
 
 .issue-list strong {
+  color: var(--ink);
+}
+
+.rubric-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.rubric-grid div,
+.instruction-list li {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 12px;
+}
+
+.rubric-grid strong,
+.rubric-grid span {
+  display: block;
+}
+
+.rubric-grid span,
+.instruction-list {
+  color: var(--muted);
+}
+
+.instruction-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding-left: 20px;
+}
+
+.instruction-list strong {
   color: var(--ink);
 }
 
@@ -706,6 +768,7 @@ button {
   .connect-grid,
   .live-grid,
   .validation-grid,
+  .rubric-grid,
   .readiness {
     grid-template-columns: 1fr;
   }
