@@ -180,6 +180,17 @@
             <button class="secondary" id="copyGeneratedCode">Copy code</button>
             <button class="secondary" id="sendToValidator">Send to validator</button>
           </div>
+          <p class="notice subtle" id="generationStatus">Connect a Figma file, select a component, then generate code.</p>
+          <div class="split comparison-grid">
+            <section class="surface">
+              <h4>Selected Figma component</h4>
+              <div id="figmaComparePreview" class="component-preview"></div>
+            </section>
+            <section class="surface">
+              <h4>Generated UI simulation</h4>
+              <div id="generatedComparePreview" class="component-preview"></div>
+            </section>
+          </div>
           <pre class="output code-output" id="generatedCode"></pre>
         </section>
 
@@ -237,6 +248,7 @@
         </section>
       </section>
     </main>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script src="/app.js?v=live-product" type="module"></script>
   </body>
 </html>

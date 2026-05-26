@@ -519,6 +519,52 @@ button {
   color: var(--bad);
 }
 
+.notice.subtle {
+  border-color: var(--line);
+  background: #ffffff;
+  color: var(--muted);
+}
+
+.comparison-grid {
+  align-items: stretch;
+}
+
+.sim-canvas {
+  --sim-color: var(--figma-color, var(--figma-text, var(--figma-ink, #182132)));
+  --sim-surface: var(--figma-surface, var(--figma-background, #ffffff));
+  --sim-accent: var(--figma-primary, var(--figma-color-primary, var(--accent)));
+  --sim-space: var(--figma-spacing, var(--figma-space, 16px));
+  width: 100%;
+  min-height: 180px;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  border-radius: 8px;
+  background: repeating-linear-gradient(45deg, #f8fafc 0, #f8fafc 10px, #eef4f8 10px, #eef4f8 20px);
+}
+
+.sim-component {
+  max-width: 100%;
+  display: grid;
+  align-content: center;
+  border: 1px solid var(--line);
+  border-left: 5px solid var(--sim-accent);
+  border-radius: 8px;
+  background: var(--sim-surface);
+  color: var(--sim-color);
+  box-shadow: 0 16px 34px rgba(24, 33, 50, 0.16);
+}
+
+.sim-kicker {
+  width: fit-content;
+  border-radius: 999px;
+  padding: 4px 9px;
+  background: #cffafe;
+  color: var(--accent-strong);
+  font-size: 12px;
+  font-weight: 900;
+}
+
 .output {
   margin: 0;
   max-height: 420px;
@@ -589,6 +635,32 @@ button {
   margin-top: 4px;
   color: var(--ink);
   font-weight: 900;
+}
+
+.toast {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 20;
+  transform: translateY(18px);
+  opacity: 0;
+  pointer-events: none;
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: #101827;
+  color: #f8fafc;
+  font-weight: 900;
+  box-shadow: var(--shadow);
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.toast.is-visible {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+.toast.error {
+  background: var(--bad);
 }
 
 @media (max-width: 980px) {

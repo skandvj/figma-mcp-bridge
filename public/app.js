@@ -19,6 +19,7 @@ const frameworkSelect = document.querySelector("#frameworkSelect");
 const teamPackage = document.querySelector("#teamPackage");
 const codeSample = document.querySelector("#codeSample");
 const generatedCode = document.querySelector("#generatedCode");
+const generationStatus = document.querySelector("#generationStatus");
 const latestScore = document.querySelector("#latestScore");
 const statusDot = document.querySelector("#statusDot");
 const statusLabel = document.querySelector("#statusLabel");
@@ -152,10 +153,13 @@ function renderEmptyState() {
   document.querySelector("#currentScoreLabel").textContent = "Not scored yet";
   componentSelect.innerHTML = '<option value="">Connect a Figma file first</option>';
   generatedCode.textContent = "Connect a Figma file to generate code from a real component.";
+  generationStatus.textContent = "Connect a Figma file, select a component, then generate code.";
   codeSample.value = "";
   document.querySelector("#componentList").innerHTML = emptyCard("Connect a Figma file to load its component inventory.");
   document.querySelector("#componentPreview").innerHTML = emptyInline("No live component selected.");
   document.querySelector("#componentDetailPreview").innerHTML = emptyInline("No live component selected.");
+  document.querySelector("#figmaComparePreview").innerHTML = emptyInline("No live component selected.");
+  document.querySelector("#generatedComparePreview").innerHTML = emptyInline("Generated simulation appears after code generation.");
   document.querySelector("#contractList").innerHTML = "";
   document.querySelector("#componentDetails").innerHTML = "";
   document.querySelector("#componentResource").textContent = "";
@@ -212,6 +216,8 @@ async function setComponent(id) {
   renderComponentList();
   renderComponentPreview("#componentPreview", component);
   renderComponentPreview("#componentDetailPreview", component);
+  renderComponentPreview("#figmaComparePreview", component);
+  renderGeneratedSimulation();
   renderContract("#contractList", component);
   renderContract("#componentDetails", component);
   document.querySelector("#componentDetailTitle").textContent = component.name;
@@ -221,14 +227,29 @@ async function setComponent(id) {
 
   if (state.token && state.fileKey) {
     try {
-      const result = await figmaApi("component", { token: state.token, fileKey: state.fileKey, nodeId: component.id });
-      state.componentSpec = result.component;
+      renderPreviewLoading(component);
+      const [componentResult, exportResult] = await Promise.all([
+        figmaApi("component", { token: state.token, fileKey: state.fileKey, nodeId: component.id }),
+        figmaApi("export", { token: state.token, fileKey: state.fileKey, nodeId: component.id, format: "svg" }).catch(() => ({ url: null }))
+      ]);
+      if (state.component?.id !== component.id) return;
+      state.componentSpec = componentResult.component;
+      if (exportResult.url) {
+        component.previewUrl = exportResult.url;
+      }
+      renderComponentPreview("#componentPreview", component);
+      renderComponentPreview("#componentDetailPreview", component);
+      renderComponentPreview("#figmaComparePreview", component);
       renderContract("#contractList", component);
       renderContract("#componentDetails", component);
       document.querySelector("#componentResource").textContent = JSON.stringify(componentResource(component), null, 2);
       renderGeneratedCode();
+      renderGeneratedSimulation();
     } catch (error) {
       showNotice(`Component metadata was partially loaded: ${error.message}`, true);
+      renderComponentPreview("#componentPreview", component);
+      renderComponentPreview("#componentDetailPreview", component);
+      renderComponentPreview("#figmaComparePreview", component);
     }
   }
 }
@@ -251,10 +272,18 @@ function renderComponentList() {
 }
 
 function renderComponentPreview(target, component) {
-  const image = component.thumbnailUrl
-    ? `<img class="figma-thumb" src="${escapeHtml(component.thumbnailUrl)}" alt="${escapeHtml(component.name)} preview">`
-    : `<div class="live-node"><strong>${escapeHtml(component.name)}</strong><span>${escapeHtml(component.id)}</span></div>`;
+  const imageUrl = component.previewUrl || component.thumbnailUrl;
+  const image = imageUrl
+    ? `<img class="figma-thumb" src="${escapeHtml(imageUrl)}" alt="${escapeHtml(component.name)} preview">`
+    : `<div class="live-node"><strong>${escapeHtml(component.name)}</strong><span>Preview export pending for ${escapeHtml(component.id)}</span></div>`;
   document.querySelector(target).innerHTML = image;
+}
+
+function renderPreviewLoading(component) {
+  const markup = `<div class="live-node"><strong>${escapeHtml(component.name)}</strong><span>Loading Figma export preview...</span></div>`;
+  document.querySelector("#componentPreview").innerHTML = markup;
+  document.querySelector("#componentDetailPreview").innerHTML = markup;
+  document.querySelector("#figmaComparePreview").innerHTML = markup;
 }
 
 function renderContract(target, component) {
@@ -303,6 +332,8 @@ function tokenRow(token) {
 function renderGeneratedCode() {
   if (!state.component) {
     generatedCode.textContent = "Connect a Figma file and select a component first.";
+    generationStatus.textContent = "Code generation needs a connected Figma component.";
+    renderGeneratedSimulation();
     return;
   }
 
@@ -312,6 +343,38 @@ function renderGeneratedCode() {
       ? generateVueCode(state.component)
       : generateSvelteCode(state.component);
   generatedCode.textContent = code;
+  generationStatus.textContent = `${componentName(state.component.name)} ${labelForFramework(state.framework)} scaffold generated from the selected Figma component.`;
+  renderComponentPreview("#figmaComparePreview", state.component);
+  renderGeneratedSimulation();
+}
+
+function renderGeneratedSimulation() {
+  const target = document.querySelector("#generatedComparePreview");
+  if (!state.component) {
+    target.innerHTML = emptyInline("Generated simulation appears after code generation.");
+    return;
+  }
+
+  const styleVars = state.tokens
+    .filter((token) => token.cssName && token.cssValue)
+    .slice(0, 80)
+    .map((token) => `${token.cssName}: ${token.cssValue}`)
+    .join(";");
+  const spec = state.componentSpec || {};
+  const width = spec.size?.width ? Math.min(Math.max(Math.round(spec.size.width), 180), 520) : 320;
+  const height = spec.size?.height ? Math.min(Math.max(Math.round(spec.size.height), 56), 260) : 96;
+  const padding = paddingLabel(spec.padding) === "Not available" ? "var(--sim-space)" : paddingLabel(spec.padding);
+  const gap = spec.itemSpacing != null ? `${spec.itemSpacing}px` : "12px";
+
+  target.innerHTML = `
+    <div class="sim-canvas" style="${escapeHtml(styleVars)}">
+      <div class="sim-component" style="width:${width}px; min-height:${height}px; padding:${escapeHtml(padding)}; gap:${escapeHtml(gap)};">
+        <span class="sim-kicker">${escapeHtml(labelForFramework(state.framework))}</span>
+        <strong>${escapeHtml(state.component.name)}</strong>
+        <small>Tokenized scaffold preview</small>
+      </div>
+    </div>
+  `;
 }
 
 function generateReactCode(component) {
@@ -632,19 +695,46 @@ function emptyInline(message) {
 }
 
 async function copyText(text, selector) {
-  await navigator.clipboard.writeText(text);
   const button = document.querySelector(selector);
   const original = button.textContent;
-  button.textContent = "Copied";
-  setTimeout(() => {
-    button.textContent = original;
-  }, 1200);
+  try {
+    if (!text || /^Connect a Figma file/.test(text)) {
+      throw new Error("There is no generated code to copy yet.");
+    }
+    await navigator.clipboard.writeText(text);
+    button.textContent = "Copied";
+    showToast("Copied to clipboard");
+    setTimeout(() => {
+      button.textContent = original;
+    }, 1400);
+  } catch (error) {
+    button.textContent = "Copy failed";
+    showToast(error.message || "Copy failed", true);
+    setTimeout(() => {
+      button.textContent = original;
+    }, 1800);
+  }
+}
+
+function showToast(message, isError = false) {
+  const toast = document.querySelector("#toast");
+  toast.textContent = message;
+  toast.classList.toggle("error", isError);
+  toast.classList.add("is-visible");
+  clearTimeout(showToast.timer);
+  showToast.timer = setTimeout(() => {
+    toast.classList.remove("is-visible");
+  }, 2200);
 }
 
 function setStatus(label, detail, tone) {
   statusLabel.textContent = label;
   statusDetail.textContent = detail;
   statusDot.className = `dot ${tone || ""}`.trim();
+}
+
+function labelForFramework(framework) {
+  return framework.charAt(0).toUpperCase() + framework.slice(1);
 }
 
 function escapeHtml(value) {
