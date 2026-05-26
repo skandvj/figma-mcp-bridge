@@ -1,5 +1,5 @@
 const state = {
-  baseUrl: window.location.origin,
+  baseUrl: "",
   readiness: null,
   selectedResource: "figma://design-tokens"
 };
@@ -37,7 +37,13 @@ document.querySelector("#copyConfig").addEventListener("click", copyClaudeConfig
 renderResourcePayload();
 renderCodegenPayload();
 renderValidationPayload();
-checkRuntime();
+setStatus("Wizard ready", "Paste your live MCP runtime URL", "");
+renderReadiness({
+  mode: "waiting for runtime",
+  products: [],
+  sseAuthConfigured: false,
+  webhookSecretConfigured: false
+});
 
 function showPanel(id) {
   steps.forEach((step) => step.classList.toggle("is-active", step.dataset.step === id));
@@ -53,7 +59,19 @@ function showPanel(id) {
 }
 
 async function checkRuntime() {
-  state.baseUrl = mcpBase.value.replace(/\/$/, "") || window.location.origin;
+  state.baseUrl = mcpBase.value.replace(/\/$/, "");
+  if (!state.baseUrl) {
+    modeValue.textContent = "-";
+    productValue.textContent = "waiting";
+    setStatus("Add runtime URL", "Use the SSE server URL", "");
+    renderReadiness({
+      mode: "waiting for runtime",
+      products: [],
+      sseAuthConfigured: false,
+      webhookSecretConfigured: false
+    });
+    return;
+  }
   setStatus("Checking runtime", "Calling /ready", "");
   try {
     const readiness = await fetchJson("/ready");
