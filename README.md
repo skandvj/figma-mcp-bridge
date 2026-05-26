@@ -184,6 +184,16 @@ npm run build
 
 Current suite covers MCP resources/tools, Figma REST/mock clients, transformer helpers, token generation, and the full MCP flow with in-memory transports.
 
+Optional live Figma verification is gated so CI can pass without secrets:
+
+```bash
+RUN_LIVE_FIGMA_TESTS=true \
+FIGMA_MODE=production \
+FIGMA_ACCESS_TOKEN=figd_... \
+FIGMA_FILE_KEY=your_file_key \
+npm run test:live:figma
+```
+
 ## Project Structure
 
 ```text

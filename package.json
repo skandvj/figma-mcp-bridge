@@ -16,7 +16,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --coverage",
     "test:unit": "vitest run tests/unit",
-    "test:integration": "vitest run tests/integration"
+    "test:integration": "vitest run tests/integration",
+    "test:live:figma": "RUN_LIVE_FIGMA_TESTS=true vitest run tests/integration/live-figma.test.ts"
   },
   "keywords": ["mcp", "figma", "design-system", "tokens", "ai-agents"],
   "author": "",
