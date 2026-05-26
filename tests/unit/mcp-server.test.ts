@@ -1,8 +1,13 @@
-import { describe, expect, it, afterEach } from "vitest";
+import { describe, expect, it, afterEach, vi } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { FigmaClient } from "../../src/figma-client/client.js";
-import { createMcpServer } from "../../src/mcp-server/index.js";
+import {
+  createMcpServer,
+  httpRequestAuthorized,
+  readinessStatus,
+  webhookRequestAuthorized
+} from "../../src/mcp-server/index.js";
 import { generateComponentCode, validateImplementation } from "../../src/mcp-server/tools.js";
 import type { CodegenConfig } from "../../src/mcp-server/codegen-config.js";
 import { componentSetToSpec, variablesToStyleDictionary } from "../../src/figma-client/transformers.js";
@@ -27,6 +32,7 @@ afterEach(async () => {
     await entry.server.close();
     entry.figma.close();
   }));
+  vi.unstubAllEnvs();
 });
 
 describe("MCP server resources", () => {
@@ -146,6 +152,28 @@ describe("MCP tools", () => {
     const analysis = analyzeImplementation('<button aria-label="Save" style={{ color: "#2563EB", padding: "8px" }}>Save</button>');
     expect(analysis.attributes).toContain("aria-label");
     expect(analysis.values).toEqual(expect.arrayContaining(["Save", "#2563EB", "8px"]));
+  });
+});
+
+describe("SSE runtime security", () => {
+  it("reports readiness, protects MCP HTTP auth, and verifies webhook secrets", () => {
+    vi.stubEnv("MCP_API_KEY", "test-key");
+    vi.stubEnv("FIGMA_WEBHOOK_SECRET", "webhook-secret");
+    const figma = new FigmaClient({ useMockData: true, cachePath: ":memory:" });
+
+    try {
+      expect(readinessStatus(figma)).toMatchObject({
+        mode: "demo",
+        sseAuthConfigured: true,
+        webhookSecretConfigured: true
+      });
+      expect(httpRequestAuthorized({ authorization: "Bearer test-key" })).toBe(true);
+      expect(httpRequestAuthorized({ "x-api-key": "bad-key" })).toBe(false);
+      expect(webhookRequestAuthorized({}, Buffer.from("{}"), {})).toBe(false);
+      expect(webhookRequestAuthorized({ "x-webhook-secret": "webhook-secret" }, Buffer.from("{}"), {})).toBe(true);
+    } finally {
+      figma.close();
+    }
   });
 });
 

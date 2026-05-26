@@ -48,6 +48,8 @@ npx tsx src/mcp-server/index.ts --transport sse --port 3100
 curl http://localhost:3100/sse
 ```
 
+For production SSE, set either `MCP_API_KEY` or `MCP_BASIC_AUTH_USERNAME`/`MCP_BASIC_AUTH_PASSWORD`. Webhook cache invalidation can be protected with `FIGMA_WEBHOOK_SECRET`. Readiness is available at `/ready` and reports mode, configured products, HTTP auth, and webhook-secret status.
+
 Generate token outputs:
 
 ```bash
