@@ -27,9 +27,7 @@ const statusDetail = document.querySelector("#statusDetail");
 const mcpBase = document.querySelector("#mcpBase");
 const apiKey = document.querySelector("#apiKey");
 
-steps.forEach((step) => {
-  step.addEventListener("click", () => showPanel(step.dataset.panel));
-});
+steps.forEach((step) => step.addEventListener("click", () => showPanel(step.dataset.panel)));
 
 document.querySelector("#connectFile").addEventListener("click", connectFile);
 document.querySelector("#forgetConnection").addEventListener("click", forgetConnection);
@@ -55,11 +53,8 @@ document.querySelector("#useGeneratedCode").addEventListener("click", () => {
 document.querySelector("#runValidation").addEventListener("click", runValidation);
 document.querySelector("#checkRuntime").addEventListener("click", checkRuntime);
 document.querySelector("#copyConfig").addEventListener("click", () => copyText(document.querySelector("#claudeConfig").textContent, "#copyConfig"));
-document.querySelector("#copyProjectPitch").addEventListener("click", () => {
-  copyText(
-    "Figma MCP Bridge connects a live Figma design system to AI coding agents, generates token-correct UI code, and scores implementations against the source design contract.",
-    "#copyProjectPitch"
-  );
+document.querySelector("#copyProjectPitch")?.addEventListener("click", () => {
+  copyText("Figma MCP Bridge connects a live Figma design system to AI coding agents, generates token-correct UI code, and scores implementations against the source design contract.", "#copyProjectPitch");
 });
 
 init();
@@ -147,6 +142,7 @@ async function figmaApi(action, payload) {
 function renderEmptyState() {
   document.querySelector("#componentCount").textContent = "--";
   document.querySelector("#tokenCount").textContent = "--";
+  document.querySelector("#aiCount").textContent = "--";
   latestScore.textContent = "--";
   document.querySelector("#currentFileName").textContent = "Waiting for Figma";
   document.querySelector("#currentComponentName").textContent = "None selected";
@@ -160,6 +156,7 @@ function renderEmptyState() {
   document.querySelector("#componentDetailPreview").innerHTML = emptyInline("No live component selected.");
   document.querySelector("#figmaComparePreview").innerHTML = emptyInline("No live component selected.");
   document.querySelector("#generatedComparePreview").innerHTML = emptyInline("Generated simulation appears after code generation.");
+  document.querySelector("#aiReason").textContent = "AI discovery will explain why a node was surfaced after connection.";
   document.querySelector("#contractList").innerHTML = "";
   document.querySelector("#componentDetails").innerHTML = "";
   document.querySelector("#componentResource").textContent = "";
@@ -173,8 +170,10 @@ function renderEmptyState() {
 }
 
 function renderConnectedState() {
+  const aiCandidates = state.components.filter((component) => component.source === "ai-candidate-frame" || component.aiRank).length;
   document.querySelector("#componentCount").textContent = String(state.components.length);
   document.querySelector("#tokenCount").textContent = String(state.tokens.length);
+  document.querySelector("#aiCount").textContent = String(aiCandidates);
   document.querySelector("#currentFileName").textContent = state.file?.fileName || state.fileKey;
   componentSelect.innerHTML = state.components.length
     ? state.components.map((component) => `<option value="${escapeHtml(component.id)}">${escapeHtml(component.name)}</option>`).join("")
@@ -188,7 +187,6 @@ function renderConnectedState() {
 
 function showPanel(id) {
   steps.forEach((step) => step.classList.toggle("is-active", step.dataset.panel === id));
-  panels.forEach((panel) => panel.classList.toggle("is-visible", panel.id === id));
   const titles = {
     connect: "Connect Figma",
     workspace: "Workspace",
@@ -199,6 +197,7 @@ function showPanel(id) {
     agent: "Agent setup"
   };
   document.querySelector("#panelTitle").textContent = titles[id] || "Workspace";
+  document.querySelector(`#${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 async function setComponent(id) {
@@ -221,6 +220,7 @@ async function setComponent(id) {
   renderContract("#contractList", component);
   renderContract("#componentDetails", component);
   document.querySelector("#componentDetailTitle").textContent = component.name;
+  renderAiReason(component);
   document.querySelector("#componentResource").textContent = JSON.stringify(componentResource(component), null, 2);
   renderGeneratedCode();
   renderMcpPayload();
@@ -263,12 +263,17 @@ function renderComponentList() {
   document.querySelector("#componentList").innerHTML = state.components.map((component) => (
     `<button class="component-card ${component.id === state.component?.id ? "is-selected" : ""}" data-component="${escapeHtml(component.id)}">
       <strong>${escapeHtml(component.name)}</strong>
+      <span class="source-pill">${escapeHtml(sourceLabel(component))}</span>
       <small>${escapeHtml(component.description || component.id)}</small>
     </button>`
   )).join("");
   document.querySelectorAll("[data-component]").forEach((button) => {
     button.addEventListener("click", () => setComponent(button.dataset.component));
   });
+}
+
+function renderAiReason(component) {
+  document.querySelector("#aiReason").textContent = `${sourceLabel(component)}: ${component.aiReason || "Detected from Figma metadata and design-system structure."}`;
 }
 
 function renderComponentPreview(target, component) {
@@ -606,6 +611,9 @@ function componentResource(component) {
     name: component.name,
     description: component.description,
     componentSetId: component.componentSetId,
+    source: component.source,
+    aiRank: component.aiRank,
+    aiReason: component.aiReason,
     figmaSpec: state.componentSpec
   };
 }
@@ -692,6 +700,14 @@ function emptyCard(message) {
 
 function emptyInline(message) {
   return `<div class="live-node"><strong>${escapeHtml(message)}</strong><span>Connect Figma to populate this area.</span></div>`;
+}
+
+function sourceLabel(component) {
+  if (component.aiRank) return `AI ranked #${component.aiRank}`;
+  if (component.source === "ai-candidate-frame") return "AI discovered frame";
+  if (component.source === "published-component") return "Published component";
+  if (component.source === "local-component") return "Local component";
+  return "Figma node";
 }
 
 async function copyText(text, selector) {

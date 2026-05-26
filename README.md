@@ -66,6 +66,8 @@ The `public/` directory contains a Vercel-hostable product dashboard for recruit
 
 Tokens are not saved by the browser app or committed into Vercel environment variables. The dashboard sends the token only for the current Figma API request and exposes a "Forget credentials" action for the session.
 
+Component discovery reads published Figma components, local component metadata, component sets, and component-like frames inside design-system pages. If `OPENAI_API_KEY` and `OPENAI_MODEL` are configured on the server, `/api/figma` also AI-ranks the discovered candidates so unpublished but reusable design-system nodes are easier to find.
+
 See [docs/VERCEL_DEPLOYMENT.md](docs/VERCEL_DEPLOYMENT.md) for the recommended split: host the public dashboard on Vercel, deploy the MCP SSE runtime as a long-running Node container for agent integrations, and use the same Figma file key in both places.
 
 Generate token outputs:

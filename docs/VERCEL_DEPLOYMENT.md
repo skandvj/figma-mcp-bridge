@@ -25,6 +25,15 @@ The Vercel app serves:
 
 The public dashboard does not store Figma credentials. The token is accepted from the browser for the current request and forwarded to Figma with `X-Figma-Token`.
 
+Optional AI-assisted component ranking:
+
+```bash
+OPENAI_API_KEY=sk-...
+OPENAI_MODEL=gpt-4.1
+```
+
+Without these variables, the product still discovers components using Figma metadata, component sets, file-tree structure, and design-system naming signals.
+
 ## Live MCP Runtime
 
 Required production environment variables:

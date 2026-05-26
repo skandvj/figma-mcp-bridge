@@ -16,16 +16,7 @@
             <p>Live Figma to production code</p>
           </div>
         </div>
-
-        <nav class="steps" aria-label="Product navigation">
-          <button class="step is-active" data-panel="connect">Connect Figma</button>
-          <button class="step" data-panel="workspace">Workspace</button>
-          <button class="step" data-panel="components">Components</button>
-          <button class="step" data-panel="tokens">Tokens</button>
-          <button class="step" data-panel="generate">Generate</button>
-          <button class="step" data-panel="validate">Validate</button>
-          <button class="step" data-panel="agent">Agent setup</button>
-        </nav>
+        <p class="sidebar-copy">Connect one Figma file, discover components with AI assistance, generate code, compare visuals, and validate implementation drift from a single dashboard.</p>
 
         <section class="runtime-card">
           <span class="dot" id="statusDot"></span>
@@ -40,11 +31,10 @@
         <header class="topbar">
           <div>
             <p class="eyebrow">Design System Control Center</p>
-            <h2 id="panelTitle">Connect Figma</h2>
+            <h2 id="panelTitle">Live Figma Dashboard</h2>
           </div>
           <div class="top-actions">
             <a href="https://github.com/skandvj/figma-mcp-bridge" target="_blank" rel="noreferrer">GitHub</a>
-            <button class="secondary" id="copyProjectPitch">Copy pitch</button>
           </div>
         </header>
 
@@ -60,9 +50,9 @@
             <small>local Figma variables</small>
           </article>
           <article class="metric">
-            <span>Validation Score</span>
-            <strong id="latestScore">--</strong>
-            <small>against your design system</small>
+            <span>AI Discovery</span>
+            <strong id="aiCount">--</strong>
+            <small>component-like nodes found</small>
           </article>
         </section>
 
@@ -112,7 +102,7 @@
             <article class="workflow-card">
               <span>3</span>
               <strong>Quality score</strong>
-              <small id="currentScoreLabel">Not scored yet</small>
+              <small><span id="currentScoreLabel">Not scored yet</span> · <span id="latestScore">--</span></small>
             </article>
           </div>
           <div class="split">
@@ -137,6 +127,7 @@
             <div class="surface">
               <h4 id="componentDetailTitle">No component selected</h4>
               <div id="componentDetailPreview" class="component-preview"></div>
+              <p class="notice subtle" id="aiReason">AI discovery will explain why a node was surfaced after connection.</p>
               <dl class="contract-list" id="componentDetails"></dl>
               <pre class="output compact-output" id="componentResource"></pre>
             </div>
@@ -174,7 +165,7 @@
               Team package
               <input id="teamPackage" value="@company/ui">
             </label>
-            <button class="primary" id="generateCode">Generate</button>
+            <button class="primary" id="generateCode">Refresh code</button>
           </div>
           <div class="toolbar">
             <button class="secondary" id="copyGeneratedCode">Copy code</button>

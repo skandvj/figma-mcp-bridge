@@ -17,16 +17,22 @@ export default async function handler(req, res) {
   try {
     if (action === "inspect") {
       const [file, publishedComponents] = await Promise.all([
-        figmaFetch(`/files/${encodeURIComponent(fileKey)}?depth=2`, token),
+        figmaFetch(`/files/${encodeURIComponent(fileKey)}?depth=4`, token),
         figmaFetch(`/files/${encodeURIComponent(fileKey)}/components`, token).catch(() => null)
       ]);
+      const discoveredComponents = collectComponentCandidates(file.document);
+      const components = mergeComponents(
+        file.components || {},
+        publishedComponents?.meta?.components || [],
+        discoveredComponents
+      );
 
       return res.status(200).json({
         fileName: file.name,
         lastModified: file.lastModified,
         version: file.version,
         pages: extractPages(file.document),
-        components: mergeComponents(file.components || {}, publishedComponents?.meta?.components || [])
+        components: await rankComponentsWithAi(components, file.name)
       });
     }
 
@@ -101,7 +107,7 @@ function extractPages(documentNode) {
   }));
 }
 
-function mergeComponents(localComponents, publishedComponents) {
+function mergeComponents(localComponents, publishedComponents, discoveredComponents = []) {
   const byNodeId = new Map();
 
   Object.entries(localComponents).forEach(([nodeId, component]) => {
@@ -111,7 +117,9 @@ function mergeComponents(localComponents, publishedComponents) {
       name: component.name || nodeId,
       description: component.description || "",
       componentSetId: component.componentSetId || null,
-      thumbnailUrl: component.thumbnail_url || component.thumbnailUrl || null
+      thumbnailUrl: component.thumbnail_url || component.thumbnailUrl || null,
+      source: "local-component",
+      discoveryScore: 100
     });
   });
 
@@ -124,11 +132,146 @@ function mergeComponents(localComponents, publishedComponents) {
       name: component.name || nodeId,
       description: component.description || "",
       componentSetId: component.component_set_id || component.componentSetId || null,
-      thumbnailUrl: component.thumbnail_url || component.thumbnailUrl || null
+      thumbnailUrl: component.thumbnail_url || component.thumbnailUrl || null,
+      source: "published-component",
+      discoveryScore: 100
     });
   });
 
-  return [...byNodeId.values()].sort((left, right) => left.name.localeCompare(right.name));
+  discoveredComponents.forEach((component) => {
+    const existing = byNodeId.get(component.id);
+    byNodeId.set(component.id, {
+      ...component,
+      ...existing,
+      name: existing?.name || component.name,
+      description: existing?.description || component.description,
+      componentSetId: existing?.componentSetId || component.componentSetId,
+      thumbnailUrl: existing?.thumbnailUrl || component.thumbnailUrl,
+      source: existing?.source || component.source,
+      discoveryScore: Math.max(existing?.discoveryScore || 0, component.discoveryScore || 0)
+    });
+  });
+
+  return [...byNodeId.values()].sort((left, right) => {
+    const scoreDelta = (right.discoveryScore || 0) - (left.discoveryScore || 0);
+    return scoreDelta || left.name.localeCompare(right.name);
+  });
+}
+
+function collectComponentCandidates(documentNode) {
+  const candidates = [];
+  const keywords = [
+    "accordion",
+    "alert",
+    "avatar",
+    "badge",
+    "banner",
+    "button",
+    "card",
+    "checkbox",
+    "chip",
+    "dialog",
+    "drawer",
+    "dropdown",
+    "empty",
+    "field",
+    "input",
+    "link",
+    "list",
+    "menu",
+    "modal",
+    "nav",
+    "profile",
+    "radio",
+    "select",
+    "sheet",
+    "switch",
+    "tab",
+    "table",
+    "toast",
+    "toggle",
+    "tooltip"
+  ];
+
+  walkNode(documentNode, (node, ancestry) => {
+    if (!node?.id || !node?.name) return;
+
+    const lowerName = node.name.toLowerCase();
+    const typeScore = node.type === "COMPONENT_SET" ? 110 : node.type === "COMPONENT" ? 100 : node.type === "FRAME" ? 42 : 0;
+    const propertyScore = Object.keys(node.componentPropertyDefinitions || {}).length * 8;
+    const keywordScore = keywords.some((keyword) => lowerName.includes(keyword)) ? 30 : 0;
+    const designSystemScore = ancestry.some((item) => /component|library|design system|foundation|ui kit/i.test(item.name || "")) ? 18 : 0;
+    const layoutScore = node.layoutMode ? 10 : 0;
+    const childScore = Math.min((node.children?.length || 0) * 2, 16);
+    const discoveryScore = typeScore + propertyScore + keywordScore + designSystemScore + layoutScore + childScore;
+
+    if (discoveryScore < 54) return;
+
+    candidates.push({
+      id: node.id,
+      key: node.key || null,
+      name: node.name,
+      description: node.description || ancestry.map((item) => item.name).filter(Boolean).join(" / "),
+      componentSetId: node.componentSetId || null,
+      thumbnailUrl: null,
+      source: node.type === "FRAME" ? "ai-candidate-frame" : "document-node",
+      nodeType: node.type,
+      discoveryScore
+    });
+  });
+
+  return candidates.slice(0, 180);
+}
+
+function walkNode(node, visitor, ancestry = []) {
+  if (!node) return;
+  visitor(node, ancestry);
+  (node.children || []).forEach((child) => walkNode(child, visitor, [...ancestry, node]));
+}
+
+async function rankComponentsWithAi(components, fileName) {
+  const normalized = components.map((component) => ({
+    ...component,
+    aiRank: null,
+    aiReason: component.source === "ai-candidate-frame"
+      ? "Discovered from component-like naming, layout, and design-system location."
+      : "Discovered from Figma component metadata."
+  }));
+
+  if (!process.env.OPENAI_API_KEY || !process.env.OPENAI_MODEL) {
+    return normalized;
+  }
+
+  try {
+    const prompt = `Rank likely reusable design-system components from this Figma file named "${fileName}". Return JSON only as {"components":[{"id":"node-id","rank":1,"reason":"short reason"}]}. Components: ${JSON.stringify(normalized.slice(0, 80).map(({ id, name, source, nodeType, discoveryScore }) => ({ id, name, source, nodeType, discoveryScore })))}`;
+    const response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: process.env.OPENAI_MODEL,
+        input: prompt,
+        text: { format: { type: "json_object" } }
+      })
+    });
+    if (!response.ok) return normalized;
+    const payload = await response.json();
+    const text = payload.output_text || payload.output?.flatMap((item) => item.content || []).map((item) => item.text).join("") || "";
+    const ranked = JSON.parse(text || "{}").components || [];
+    const rankById = new Map(ranked.map((item) => [item.id, item]));
+
+    return normalized
+      .map((component) => ({
+        ...component,
+        aiRank: rankById.get(component.id)?.rank || null,
+        aiReason: rankById.get(component.id)?.reason || component.aiReason
+      }))
+      .sort((left, right) => (left.aiRank || 999) - (right.aiRank || 999));
+  } catch {
+    return normalized;
+  }
 }
 
 function normalizeVariables(variables, collections) {
