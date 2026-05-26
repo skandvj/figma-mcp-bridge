@@ -2,12 +2,12 @@
 
 This project has two production surfaces:
 
-- Public wizard: static assets in `public/**`, deployable to Vercel for recruiter and stakeholder walkthroughs.
+- Public dashboard: static assets in `public/**`, deployable to Vercel for recruiter and stakeholder walkthroughs. It works immediately with an in-browser demo design system.
 - MCP runtime: the SSE/stdio server in `src/mcp-server/index.ts`, best deployed as a long-running Node container because MCP SSE keeps client sessions open.
 
-Vercel is the right host for the public wizard. For the live MCP runtime, use the included Dockerfile on a container platform such as Fly.io, Render, Railway, ECS, or Cloud Run, then point the wizard at that runtime URL.
+Vercel is the right host for the public dashboard. For the live MCP runtime, use the included Dockerfile on a container platform such as Fly.io, Render, Railway, ECS, or Cloud Run, then point the dashboard at that runtime URL.
 
-## Public Wizard On Vercel
+## Public Dashboard On Vercel
 
 ```bash
 npm install
@@ -19,8 +19,8 @@ npx vercel deploy --prod
 
 The Vercel app serves:
 
-- `/`: guided Figma MCP Bridge walkthrough.
-- `/styles.css` and `/app.js`: static wizard assets.
+- `/`: interactive Figma MCP Bridge product dashboard.
+- `/styles.css` and `/app.js`: static dashboard assets.
 
 ## Live MCP Runtime
 
@@ -57,11 +57,12 @@ The bridge uses SQLite for local API response caching. No external database is r
 
 ## Reviewer Demo Flow
 
-1. Open the Vercel wizard link.
-2. Paste the live MCP runtime URL and API key.
-3. Verify `/ready` shows `production`, product files, SSE auth, and webhook secret.
-4. Copy a resource payload such as `figma://products/web-app/design-tokens`.
-5. Copy a codegen payload for `extract_component_code`.
-6. Copy a validation payload for `validate_implementation`.
+1. Open the Vercel dashboard link.
+2. Browse the demo component inventory and token grid.
+3. Generate React/Vue/Svelte code for a selected component.
+4. Send generated code to the validator and review the quality score.
+5. Open "Connect Figma" to paste a live MCP runtime URL and API key.
+6. Verify `/ready` shows `production`, product files, SSE auth, and webhook secret.
+7. Copy the Claude Code config or MCP payload for a real coding-agent workflow.
 
-This keeps secrets out of the public Vercel site while still giving reviewers a polished, guided product experience.
+This keeps secrets out of the public Vercel site while still giving reviewers a polished, usable product experience.
