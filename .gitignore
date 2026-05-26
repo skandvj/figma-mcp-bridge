@@ -8,3 +8,4 @@ coverage/
 figma-cache.sqlite
 generated/
 
+.vercel
