@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Figma MCP Bridge</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">FM</div>
+          <div>
+            <h1>Figma MCP Bridge</h1>
+            <p>Design system control plane</p>
+          </div>
+        </div>
+        <nav class="steps" aria-label="Guided setup">
+          <button class="step is-active" data-step="connect">1. Connect</button>
+          <button class="step" data-step="tokens">2. Tokens</button>
+          <button class="step" data-step="codegen">3. Codegen</button>
+          <button class="step" data-step="validate">4. Validate</button>
+          <button class="step" data-step="handoff">5. Handoff</button>
+        </nav>
+        <section class="runtime-card">
+          <span class="dot" id="statusDot"></span>
+          <div>
+            <strong id="statusLabel">Checking server</strong>
+            <small id="statusDetail">Waiting for readiness</small>
+          </div>
+        </section>
+      </aside>
+
+      <section class="workspace">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Live Design System Wizard</p>
+            <h2 id="panelTitle">Connect MCP runtime</h2>
+          </div>
+          <a href="https://github.com/skandvj/figma-mcp-bridge" target="_blank" rel="noreferrer">GitHub repo</a>
+        </header>
+
+        <section class="hero-grid">
+          <article class="metric">
+            <span>Resources</span>
+            <strong>8</strong>
+            <small>tokens, components, layouts, assets</small>
+          </article>
+          <article class="metric">
+            <span>Tools</span>
+            <strong>3</strong>
+            <small>codegen, validation, search</small>
+          </article>
+          <article class="metric">
+            <span>Mode</span>
+            <strong id="modeValue">-</strong>
+            <small id="productValue">products</small>
+          </article>
+        </section>
+
+        <section class="panel is-visible" id="connect">
+          <div class="panel-copy">
+            <h3>Runtime readiness</h3>
+            <p>Point this wizard at the MCP SSE service to verify product files, HTTP auth, and webhook protection.</p>
+          </div>
+          <div class="form-grid">
+            <label>
+              MCP SSE base URL
+              <input id="mcpBase" type="url" placeholder="https://figma-mcp.example.com" autocomplete="off">
+            </label>
+            <label>
+              API key
+              <input id="apiKey" type="password" placeholder="optional for protected SSE" autocomplete="off">
+            </label>
+            <button class="primary" id="checkRuntime">Check readiness</button>
+          </div>
+          <div class="readiness" id="readinessList"></div>
+        </section>
+
+        <section class="panel" id="tokens">
+          <div class="panel-copy">
+            <h3>Design token contract</h3>
+            <p>Use these resource URIs to prove the coding agent is reading real Figma variables before writing UI.</p>
+          </div>
+          <div class="resource-list">
+            <button class="resource is-selected" data-uri="figma://design-tokens">Global tokens</button>
+            <button class="resource" data-uri="figma://products/web-app/design-tokens">Product tokens</button>
+            <button class="resource" data-uri="figma://components/Button">Button spec</button>
+            <button class="resource" data-uri="figma://pages/Settings/layout">Settings layout</button>
+          </div>
+          <pre class="output" id="resourceOutput"></pre>
+        </section>
+
+        <section class="panel" id="codegen">
+          <div class="panel-copy">
+            <h3>Component code generation</h3>
+            <p>Generate scaffold payloads that reference team tokens and component-library imports instead of raw CSS.</p>
+          </div>
+          <div class="form-grid compact">
+            <label>
+              Component
+              <input id="componentName" value="ProfileCard">
+            </label>
+            <label>
+              Framework
+              <select id="frameworkName">
+                <option value="react">React</option>
+                <option value="vue">Vue</option>
+                <option value="svelte">Svelte</option>
+              </select>
+            </label>
+            <button class="primary" id="buildCodegen">Build payload</button>
+          </div>
+          <pre class="output" id="codegenOutput"></pre>
+        </section>
+
+        <section class="panel" id="validate">
+          <div class="panel-copy">
+            <h3>Implementation scoring</h3>
+            <p>Compare generated or hand-written components against Figma tokens, spacing, props, ARIA, and layout hints.</p>
+          </div>
+          <textarea id="codeSample" rows="8">export function ProfileCard({ name }) {
+  return &lt;article className="profile-card" aria-label={name} style={{ color: "var(--ds-color-primary)", padding: "var(--ds-spacing-md)" }}&gt;{name}&lt;/article&gt;;
+}</textarea>
+          <button class="primary" id="buildValidation">Build validation payload</button>
+          <pre class="output" id="validationOutput"></pre>
+        </section>
+
+        <section class="panel" id="handoff">
+          <div class="panel-copy">
+            <h3>Reviewer handoff</h3>
+            <p>A concise technical narrative for FAANG recruiters, design-platform teams, and engineering leaders.</p>
+          </div>
+          <div class="handoff-grid">
+            <article>
+              <span>What it proves</span>
+              <p>AI coding agents can consume real design tokens, Figma component metadata, and layout constraints through MCP before generating production UI.</p>
+            </article>
+            <article>
+              <span>Why it matters</span>
+              <p>Teams reduce design drift by validating code against the source design system, not a prompt-written approximation.</p>
+            </article>
+          </div>
+          <button class="primary" id="copyConfig">Copy Claude Code config</button>
+        </section>
+      </section>
+    </main>
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>

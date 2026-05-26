@@ -60,6 +60,12 @@ curl http://localhost:3100/sse
 
 For production SSE, set either `MCP_API_KEY` or `MCP_BASIC_AUTH_USERNAME`/`MCP_BASIC_AUTH_PASSWORD`. Webhook cache invalidation can be protected with `FIGMA_WEBHOOK_SECRET`. Readiness is available at `/ready` and reports mode, configured products, HTTP auth, and webhook-secret status.
 
+## Public Wizard And Deployment
+
+The `public/` directory contains a Vercel-hostable product wizard for recruiters, design-platform teams, and non-technical reviewers. It checks the live MCP runtime readiness, presents copyable MCP resource/tool payloads, and walks through token extraction, component codegen, implementation validation, and stakeholder handoff.
+
+See [docs/VERCEL_DEPLOYMENT.md](docs/VERCEL_DEPLOYMENT.md) for the recommended split: host the public wizard on Vercel, deploy the MCP SSE runtime as a long-running Node container, and point the wizard at that runtime URL.
+
 Generate token outputs:
 
 ```bash

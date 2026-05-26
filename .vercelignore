@@ -1,0 +1,11 @@
+.env
+node_modules
+dist
+coverage
+.cache
+*.log
+figma-cache.sqlite
+generated
+figma.files.json
+codegen.config.json
+figma-plugin/dist
