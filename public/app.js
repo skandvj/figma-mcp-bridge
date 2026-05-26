@@ -205,7 +205,7 @@ function showPanel(id) {
   document.querySelector(".workspace")?.scrollTo({ top: 0, behavior: "smooth" });
 }
 
-async function setComponent(id) {
+async function setComponent(id, focusInspector = false) {
   const component = state.components.find((item) => item.id === id) || state.components[0] || null;
   state.component = component;
   state.componentSpec = null;
@@ -229,6 +229,9 @@ async function setComponent(id) {
   document.querySelector("#componentResource").textContent = JSON.stringify(componentResource(component), null, 2);
   renderGeneratedCode();
   renderMcpPayload();
+  if (focusInspector) {
+    revealInspector();
+  }
 
   if (state.token && state.fileKey) {
     try {
@@ -259,6 +262,14 @@ async function setComponent(id) {
   }
 }
 
+function revealInspector() {
+  const inspector = document.querySelector("#componentInspector");
+  if (!inspector) return;
+  if (window.matchMedia("(max-width: 980px)").matches) {
+    inspector.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+}
+
 function renderComponentList() {
   if (!state.components.length) {
     document.querySelector("#componentList").innerHTML = emptyCard("No components were found in this Figma file.");
@@ -273,7 +284,7 @@ function renderComponentList() {
     </button>`
   )).join("");
   document.querySelectorAll("[data-component]").forEach((button) => {
-    button.addEventListener("click", () => setComponent(button.dataset.component));
+    button.addEventListener("click", () => setComponent(button.dataset.component, true));
   });
 }
 

@@ -269,6 +269,7 @@ p {
   display: grid;
   grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
   gap: 14px;
+  align-items: start;
 }
 
 .surface {
@@ -279,6 +280,13 @@ p {
 
 .surface h4 {
   margin-bottom: 12px;
+}
+
+.inspector-panel {
+  position: sticky;
+  top: 0;
+  max-height: calc(100vh - 56px);
+  overflow: auto;
 }
 
 .component-preview {
@@ -407,6 +415,9 @@ p {
 .component-list {
   display: grid;
   gap: 10px;
+  max-height: calc(100vh - 220px);
+  overflow: auto;
+  padding-right: 4px;
 }
 
 .component-card {
@@ -700,7 +711,24 @@ button {
   }
 
   .sidebar {
+    position: relative;
+    height: auto;
     min-height: auto;
+  }
+
+  .workspace {
+    max-height: none;
+    overflow: visible;
+  }
+
+  .component-list {
+    max-height: 420px;
+  }
+
+  .inspector-panel {
+    position: relative;
+    max-height: none;
+    overflow: visible;
   }
 
   .topbar,
